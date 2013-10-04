@@ -95,7 +95,7 @@ function whisperfollow_update_db_check() {
 
 
 function add_whisper($permalink,$title,$content,$authorname='',$authorurl='',$time=0,$avurl=''){
-	//whisperfollow_log("adding whisper: ".$permalink.": ".$title);
+	whisperfollow_log("adding whisper: ".$permalink.": ".$title);
 	global $wpdb;
 	if($time < 1){
 		$time = time();
@@ -633,9 +633,12 @@ function whisperfollow_aggregate($feeds,$pushed=false){
 		//whisperfollow_log("<br/>items object:");
 		usort($items,'date_sort');
 		foreach ($items as $item){
-			whisperfollow_log("<br/>got ".$item->get_title()." from ". $item->get_feed()->get_title()."<br/>");
-			add_whisper($item->get_permalink(),$item->get_title(),html_entity_decode ($item->get_description()),$item->get_feed()->get_title(),$item->get_feed()->get_link(),$item->get_date("U"));
-
+			try{
+				whisperfollow_log("<br/>got ".$item->get_title()." from ". $item->get_feed()->get_title()."<br/>");
+				add_whisper($item->get_permalink(),$item->get_title(),html_entity_decode ($item->get_description()),$item->get_feed()->get_title(),$item->get_feed()->get_link(),$item->get_date("U"));
+			}catch(Exception $e){
+				whisperfollow_log("Exception occured: ".$e->getMessage());
+			}
 		}
 		
 		remove_filter( 'wp_feed_cache_transient_lifetime', 'whisperfollow_feed_time' );
@@ -767,12 +770,17 @@ function whisperfollow_display($items,$time){
 				Title<br>
 				<input type="text" name="followtitle" value="'.htmlspecialchars($item->authorname.": ".$item->title).'"><br>
 				Text:<br>
-				<textarea name="followcontent" style="width:100%;height:300px">'.htmlspecialchars("<p><blockquote>".$item->content.'</blockquote>Reblogged from <a href="'.$item->permalink.'">@'.$item->authorname.": ".$item->title.'</a></p>').'</textarea><br>
+				<textarea name="followcontent" style="width:100%;height:300px">'.htmlspecialchars("<p><blockquote>".$item->content.'</blockquote>Reblogged from <a rel="in-reply-to" class=u-in-reply-to" href="'.$item->permalink.'">@'.$item->authorname.": ".$item->title.'</a></p>').'</textarea><br>
 				<input type="hidden" name="followpermalink" value="'.$item->permalink.'">
 				<input type="submit" value="go">
 				</form>';
 			}
 			echo '</div>';
+			if (strpos(strtolower ($item->permalink), 'tumblr') !== FALSE || strpos(strtolower ($item->authorname), 'tumblr') !== FALSE){
+				echo '
+				<button onClick="jQuery(\'#tumblr-'.preg_replace('`\W`','',$item->permalink).'\').attr(\'src\',\''.htmlspecialchars($item->permalink).'\');jQuery(\'#tumblr-'.preg_replace('`\W`','',$item->permalink).'\').toggle()">tumblrreblog</button>
+				<iframe id="tumblr-'.preg_replace('`\W`','',$item->permalink).'" style="display:none;width:300px;height:25px;" scrolling="no"></iframe>';
+			}
 		}
 
 	}
