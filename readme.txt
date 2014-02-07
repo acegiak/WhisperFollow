@@ -1,7 +1,7 @@
 === Plugin Name ===
 Contributors: acegiak
-Donate link: http://machinespirit.net/acegiak/2012/01/whisperfollow/
-Tags: rss,federation,social,reblog,aggregation,ostatus
+Donate link: http://acegiak.machinespirit.net/2012/01/25/whisperfollow/
+Tags: rss,federation,social,reblog,aggregation
 Requires at least: 2.0.2
 Tested up to: 3.5
 Stable tag: trunk
