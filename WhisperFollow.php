@@ -190,7 +190,7 @@ function createthefollowpage(){
 	}
 }
 
-function createthereblog($ftitle,$fcontent){
+function createthereblog($ftitle,$fcontent,$fcontext){
 	$cat = get_term_by('name', 'whispers', 'category');
 	if($cat){
 		$cats = array($cat->term_id);
@@ -205,7 +205,9 @@ function createthereblog($ftitle,$fcontent){
 		'post_type' => 'post', //You may want to insert a regular post, page, link, a menu item or some custom post type
 		'post_category' => $cats
 	); 
-	set_post_format(wp_insert_post( $post, $wp_error ),"aside");
+	$postid = wp_insert_post( $post, $wp_error );
+	set_post_format($postid,"aside");
+	update_post_meta($postid,"context",$fcontext);
 	//echo "<p>Created post \"".$ftitle."\"</p>";
 }
     
@@ -375,7 +377,7 @@ function whisperfollow_page($items){
 		whisperfollow_newfollow($_POST['follownewaddress']);
 	}
 	if(isset($_POST['followtitle'])&&current_user_can('manage_options')){
-		createthereblog(html_entity_decode($_POST['followtitle']),html_entity_decode($_POST['followcontent']));
+		createthereblog(html_entity_decode($_POST['followtitle']),html_entity_decode($_POST['followcontent']),html_entity_decode($_POST['followcontext']));
 	}
 	if(isset($_POST['forcecheck'])&&current_user_can('manage_options')){
 		whisperfollow_log("check forced by user");
@@ -407,10 +409,12 @@ function whisperfollow_display($items,$time){
 				echo "<br><button onClick=\"document.getElementById('reply-".urlencode($item->permalink)."').style.display='block'\">Reblog This</button>";
 				echo "</div>";
 				echo '<div id="reply-'.urlencode($item->permalink).'" style="display:none;"><form target="" method="POST">
-				Title<br>
+				Title:<br>
 				<input type="text" name="followtitle" value="'.htmlspecialchars($item->authorname.": ".$item->title).'"><br>
+				Citation:<br>
+				<textarea name="followcontext" style="width:100%;height:100px">'.htmlspecialchars('<p><blockquote class="p-content">'.$item->content.'</blockquote>Reblogged from <a class="u-url" href="'.$item->permalink.'">@'.$item->authorname.": ".$item->title.'</a></p>').'</textarea><br>
 				Text:<br>
-				<textarea name="followcontent" style="width:100%;height:300px">'.htmlspecialchars("<p><blockquote>".$item->content.'</blockquote>Reblogged from <a rel="in-reply-to" class=u-in-reply-to" href="'.$item->permalink.'">@'.$item->authorname.": ".$item->title.'</a></p>').'</textarea><br>
+				<textarea name="followcontent" style="width:100%;height:300px"></textarea><br>
 				<input type="hidden" name="followpermalink" value="'.$item->permalink.'">
 				<input type="submit" value="go">
 				</form>';
