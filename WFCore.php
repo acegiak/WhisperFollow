@@ -1,5 +1,8 @@
 <?php
-      use Mf2;
+	require_once 'BarnabyWalters/Mf2/Functions.php';
+	//require_once 'Mf2/Parser.php';
+      use Mf2 as MF2P;
+	  use BarnabyWalters\Mf2 as BWMF2;
 	function curldo($url){
 		$curl_handle=curl_init();
 		curl_setopt($curl_handle,CURLOPT_URL,$url);
@@ -235,22 +238,25 @@
 
 		function whisperfollow_mf2_read($page){
 			whisperfollow_log("<br/>MF2 Parsing ".$page."<br/>");
+			try{
+				$output = MF2P\parse(curldo($page),$page);
+				
+				$feeditem = BWMF2\findMicroformatsByType($output,'h-feed',true);
+				$children = BWMF2\findMicroformatsByType($output,'h-entry',true);
 
-			$output = Mf2\parse(curldo($page),$page);
-			foreach($output->items as $item){
-				if($item->type == "h-feed"){
-					foreach($item->children as $child){
-						if(in_array("h-entry",$child->type)){
-							try{
-								whisperfollow_log("<br/>got ".$child->properties->name[0]." from ". $item->properties->name[0]."<br/>");
-								add_whisper($child->properties->url[0],$child->properties->name[0],$child->properties->content[0]->html,$item->properties->name[0],$page,strtotime($item->properties->published[0])->format( 'U' ));
-							}catch(Exception $e){
-								whisperfollow_log("Exception occured: ".$e->getMessage());
-							}
-						}
-					}
+				foreach($children as $child){
+				
+					whisperfollow_log("<br/>".print_r($child,true)."<br/>");
+					
+						whisperfollow_log("<br/>got ".$child['properties']['name'][0]." from ".$feeditem['properties']['title']?:$page."<br/>");
+						add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$child['properties']['content'][0]['html'],$feeditem['properties']['name'][0]?:$page,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])));
+					
+					
 				}
+			}catch(Exception $e){
+				whisperfollow_log("Exception occured: ".$e->getMessage());
 			}
+				
 		}
 
 		function whisperfollow_aggregate($feeds,$pushed=false){
