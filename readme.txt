@@ -42,6 +42,12 @@ You can also add things using the quick add box at the bottom of the page.
 
 == Changelog ==
 
+
+= 1.3.0 =
+* Many minor bugfixes
+* Added Reply-Context metadata to reblog whispers
+* Added support for reading MF2 pages as part of ongoing effort to make plugin indieweb friendly
+
 = 1.2.4 =
 * Fixed the error preventing whispers to actually be added to the wall created from last bugfix
 

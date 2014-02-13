@@ -3,7 +3,7 @@
     Plugin Name: WhisperFollow
     Plugin URI: http://acegiak.machinespirit.net/2012/01/25/whisperfollow/
     Description: Follow and reblog multiple sites with simplepie RSS
-    Version: 1.2.5
+    Version: 1.3.0
     Author: Ashton McAllan
     Author URI: http://acegiak.machinespirit.net
     License: GPLv2
