@@ -1,10 +1,5 @@
 <?php
-
-interface WhisperfollowFront{
-	public function log($message);
-}
-
-
+      use Mf2;
 	function curldo($url){
 		$curl_handle=curl_init();
 		curl_setopt($curl_handle,CURLOPT_URL,$url);
@@ -238,7 +233,25 @@ interface WhisperfollowFront{
 	}
 
 
+		function whisperfollow_mf2_read($page){
+			whisperfollow_log("<br/>MF2 Parsing ".$page."<br/>");
 
+			$output = Mf2\parse(curldo($page),$page);
+			foreach($output->items as $item){
+				if($item->type == "h-feed"){
+					foreach($item->children as $child){
+						if(in_array("h-entry",$child->type)){
+							try{
+								whisperfollow_log("<br/>got ".$child->properties->name[0]." from ". $item->properties->name[0]."<br/>");
+								add_whisper($child->properties->url[0],$child->properties->name[0],$child->properties->content[0]->html,$item->properties->name[0],$page,strtotime($item->properties->published[0])->format( 'U' ));
+							}catch(Exception $e){
+								whisperfollow_log("Exception occured: ".$e->getMessage());
+							}
+						}
+					}
+				}
+			}
+		}
 
 		function whisperfollow_aggregate($feeds,$pushed=false){
 			whisperfollow_log("Aggregating feeds:".count(feeds));

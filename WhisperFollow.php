@@ -23,6 +23,9 @@
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 */
 
+/*
+ MF2 Parser by Barnaby Walters: https://github.com/indieweb/php-mf2
+*/
 	require_once('WFCore.php');
 
 
@@ -320,13 +323,16 @@ function whisperfollow_aggregator( $args = array() ) {
 	));
 	$feed_uris = array();
 	foreach($bookmarks as $bookmark){
-		if(strlen($bookmark->link_rss)>0&&rand(0,count($bookmarks))<100){
-			whisperfollow_log('<br/>checking '.$bookmark->link_name);
-			$feed_uris[] = $bookmark->link_rss;
+		if(rand(0,count($bookmarks))<100){
+			if(strlen($bookmark->link_rss)>0){
+				whisperfollow_log('<br/>checking '.$bookmark->link_name);
+				whisperfollow_aggregate( $bookmark->link_rss);
+			}else{
+				whisperfollow_mf2_read($bookmark->link_url);
+			}
 		}
 	}
 	
-	whisperfollow_aggregate($feed_uris);
 
 }
 
