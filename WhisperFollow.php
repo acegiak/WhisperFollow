@@ -414,7 +414,7 @@ function whisperfollow_display($items,$time){
 				Citation:<br>
 				<textarea name="followcontext" style="width:100%;height:100px">'.htmlspecialchars('<p><blockquote class="p-content">'.$item->content.'</blockquote>Reblogged from <a class="u-url" href="'.$item->permalink.'">@'.$item->authorname.": ".$item->title.'</a></p>').'</textarea><br>
 				Text:<br>
-				<textarea name="followcontent" style="width:100%;height:300px"></textarea><br>
+				<textarea name="followcontent" style="width:100%;height:200px"></textarea><br>
 				<input type="hidden" name="followpermalink" value="'.$item->permalink.'">
 				<input type="submit" value="go">
 				</form>';

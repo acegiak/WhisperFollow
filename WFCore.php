@@ -246,10 +246,14 @@
 
 				foreach($children as $child){
 				
-					whisperfollow_log("<br/>".print_r($child,true)."<br/>");
-					
+					//whisperfollow_log("<br/>".print_r($child,true)."<br/>");
+						$citation = BWMF2\findMicroformatsByType($child,'h-cite',true);
+						$content = $child['properties']['content'][0]['html'];
+						if(isset($citation['properties']['content'][0])){
+							$content = '<div class="p-in-reply-to h-cite"><blockquote class="p-content">'.$citation['properties']['content'][0].'</blockquote>Reblogged from <a href="'.$citation['properties']['url'][0].'" class="u-url">'.$citation['properties']['name'][0].'</div>'.$content;
+						}
 						whisperfollow_log("<br/>got ".$child['properties']['name'][0]." from ".$feeditem['properties']['title']?:$page."<br/>");
-						add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$child['properties']['content'][0]['html'],$feeditem['properties']['name'][0]?:$page,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])));
+						add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$feeditem['properties']['name'][0]?:$page,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])));
 					
 					
 				}
