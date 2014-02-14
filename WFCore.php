@@ -247,7 +247,7 @@
 				foreach($children as $child){
 				
 					//whisperfollow_log("<br/>".print_r($child,true)."<br/>");
-						$citation = $child['properties']['in-reply-to'];
+						$citation = $child['properties']['in-reply-to'][0];
 						$content = $child['properties']['content'][0]['html'];
 						if(isset($citation['properties']['content'][0])){
 							$content = '<div class="p-in-reply-to h-cite"><blockquote class="p-content">'.$citation['properties']['content'][0].'</blockquote>Reblogged from <a href="'.$citation['properties']['url'][0].'" class="u-url">'.$citation['properties']['name'][0].'</div>'.$content;
@@ -326,7 +326,7 @@
 			//whisperfollow_log("Feed:".print_r($feed,true));
 
 			if ( $feed->error() )
-				$errstring = implode("\n",$feed->error());
+				$errstring = $feed->error();
 				//if(strlen($errstring) >0){ $errstring = $feed['data']['error'];}
 				if(stristr($errstring,"XML error")){
 					whisperfollow_log('simplepie-error-malfomed: '.$errstring.'<br/><code>'.htmlspecialchars ($url).'</code>');

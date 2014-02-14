@@ -190,7 +190,7 @@ function createthefollowpage(){
 	}
 }
 
-function createthereblog($ftitle,$fcontent,$fcontext){
+function createthereblog($ftitle,$fcontent,$fcontext,$ftarget){
 	$cat = get_term_by('name', 'whispers', 'category');
 	if($cat){
 		$cats = array($cat->term_id);
@@ -208,6 +208,8 @@ function createthereblog($ftitle,$fcontent,$fcontext){
 	$postid = wp_insert_post( $post, $wp_error );
 	set_post_format($postid,"aside");
 	update_post_meta($postid,"context",$fcontext);
+	whisperfollow_log("<br>sending webmention: ".get_permalink($postid)." : ".urldecode($ftarget)."<br>");
+	do_action('send_webmention', get_permalink($postid), urldecode($ftarget));
 	//echo "<p>Created post \"".$ftitle."\"</p>";
 }
     
@@ -377,7 +379,7 @@ function whisperfollow_page($items){
 		whisperfollow_newfollow($_POST['follownewaddress']);
 	}
 	if(isset($_POST['followtitle'])&&current_user_can('manage_options')){
-		createthereblog(html_entity_decode($_POST['followtitle']),html_entity_decode($_POST['followcontent']),html_entity_decode($_POST['followcontext']));
+		createthereblog(html_entity_decode($_POST['followtitle']),html_entity_decode($_POST['followcontent']),html_entity_decode($_POST['followcontext']),html_entity_decode($_POST['followcontexttarget']));
 	}
 	if(isset($_POST['forcecheck'])&&current_user_can('manage_options')){
 		whisperfollow_log("check forced by user");
@@ -412,6 +414,7 @@ function whisperfollow_display($items,$time){
 				Title:<br>
 				<input type="text" name="followtitle" value="'.htmlspecialchars($item->authorname.": ".$item->title).'"><br>
 				Citation:<br>
+				<input type="hidden" name="followcontexttarget" value="'.urlencode($item->permalink).'"/>
 				<textarea name="followcontext" style="width:100%;height:100px">'.htmlspecialchars('<p><blockquote class="p-content">'.$item->content.'</blockquote>Reblogged from <a class="u-url" href="'.$item->permalink.'">@'.$item->authorname.": ".$item->title.'</a></p>').'</textarea><br>
 				Text:<br>
 				<textarea name="followcontent" style="width:100%;height:200px"></textarea><br>
