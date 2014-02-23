@@ -190,6 +190,7 @@ function createthefollowpage(){
 	}
 }
 
+<<<<<<< HEAD
 function wf_publish_post($post_id) {
 global $wpdb;
 
@@ -213,6 +214,8 @@ wp_update_post($post);
 //do_action('wp_insert_post', $post_id, $post);
 }
 
+=======
+>>>>>>> d7252d1adbcf849a0227aa1a9b7984c132e222c6
 function createthereblog($ftitle,$fcontent,$fcontext,$ftarget){
 	$cat = get_term_by('name', 'whispers', 'category');
 	if($cat){
@@ -230,11 +233,15 @@ function createthereblog($ftitle,$fcontent,$fcontext,$ftarget){
 	); 
 	$postid = wp_insert_post( $post, $wp_error );
 	set_post_format($postid,"aside");
+<<<<<<< HEAD
 	update_post_meta($postid,"context",urldecode($fcontext));
 	update_post_meta($postid,"contextTarget",urldecode($ftarget));
 	wf_publish_post( $postid);
 	//do_action('publish_post',$postid);
 
+=======
+	update_post_meta($postid,"context",$fcontext);
+>>>>>>> d7252d1adbcf849a0227aa1a9b7984c132e222c6
 	whisperfollow_log("<br>sending webmention: ".get_permalink($postid)." : ".urldecode($ftarget)."<br>");
 	do_action('send_webmention', get_permalink($postid), urldecode($ftarget));
 	//echo "<p>Created post \"".$ftitle."\"</p>";
