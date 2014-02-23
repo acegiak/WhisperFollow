@@ -190,7 +190,30 @@ function createthefollowpage(){
 	}
 }
 
-function createthereblog($ftitle,$fcontent,$fcontext){
+function wf_publish_post($post_id) {
+global $wpdb;
+
+$post = get_post($post_id);
+
+if ( empty($post) )
+return;
+
+if ( 'publish' == $post->post_status )
+return;
+
+$old_status = $post->post_status;
+$post->post_status = 'publish';
+
+wp_update_post($post);
+
+//wp_transition_post_status('publish', $old_status, $post);
+
+//do_action('edit_post', $post_id, $post);
+//do_action('save_post', $post_id, $post);
+//do_action('wp_insert_post', $post_id, $post);
+}
+
+function createthereblog($ftitle,$fcontent,$fcontext,$ftarget){
 	$cat = get_term_by('name', 'whispers', 'category');
 	if($cat){
 		$cats = array($cat->term_id);
@@ -201,13 +224,19 @@ function createthereblog($ftitle,$fcontent,$fcontext){
 		'post_author' => $user_ID, //The user ID number of the author.
 		'post_content' => $fcontent, //The full text of the post.
 		'post_title' => $ftitle, //The title of your post.
-		'post_status' => 'publish',
+		'post_status' => 'draft',
 		'post_type' => 'post', //You may want to insert a regular post, page, link, a menu item or some custom post type
 		'post_category' => $cats
 	); 
 	$postid = wp_insert_post( $post, $wp_error );
 	set_post_format($postid,"aside");
-	update_post_meta($postid,"context",$fcontext);
+	update_post_meta($postid,"context",urldecode($fcontext));
+	update_post_meta($postid,"contextTarget",urldecode($ftarget));
+	wf_publish_post( $postid);
+	//do_action('publish_post',$postid);
+
+	whisperfollow_log("<br>sending webmention: ".get_permalink($postid)." : ".urldecode($ftarget)."<br>");
+	do_action('send_webmention', get_permalink($postid), urldecode($ftarget));
 	//echo "<p>Created post \"".$ftitle."\"</p>";
 }
     
@@ -377,7 +406,7 @@ function whisperfollow_page($items){
 		whisperfollow_newfollow($_POST['follownewaddress']);
 	}
 	if(isset($_POST['followtitle'])&&current_user_can('manage_options')){
-		createthereblog(html_entity_decode($_POST['followtitle']),html_entity_decode($_POST['followcontent']),html_entity_decode($_POST['followcontext']));
+		createthereblog(html_entity_decode($_POST['followtitle']),html_entity_decode($_POST['followcontent']),html_entity_decode($_POST['followcontext']),html_entity_decode($_POST['followcontexttarget']));
 	}
 	if(isset($_POST['forcecheck'])&&current_user_can('manage_options')){
 		whisperfollow_log("check forced by user");
@@ -408,13 +437,19 @@ function whisperfollow_display($items,$time){
 			if(current_user_can('manage_options')){
 				echo "<br><button onClick=\"document.getElementById('reply-".urlencode($item->permalink)."').style.display='block'\">Reblog This</button>";
 				echo "</div>";
-				echo '<div id="reply-'.urlencode($item->permalink).'" style="display:none;"><form target="" method="POST">
+				echo '<div id="reply-'.urlencode($item->permalink).'" style="display:none;">';
+				
+				foreach (get_posts(array('meta_key'=>'contextTarget','meta_value'=>$item->permalink)) as $existing){
+					echo '<p>Item previously reblogged: <a href="'.get_permalink($existing->ID).'">'.$existing->name.'</a></p>';
+				}
+				echo '<form target="" method="POST">
 				Title:<br>
 				<input type="text" name="followtitle" value="'.htmlspecialchars($item->authorname.": ".$item->title).'"><br>
 				Citation:<br>
+				<input type="hidden" name="followcontexttarget" value="'.urlencode($item->permalink).'"/>
 				<textarea name="followcontext" style="width:100%;height:100px">'.htmlspecialchars('<p><blockquote class="p-content">'.$item->content.'</blockquote>Reblogged from <a class="u-url" href="'.$item->permalink.'">@'.$item->authorname.": ".$item->title.'</a></p>').'</textarea><br>
 				Text:<br>
-				<textarea name="followcontent" style="width:100%;height:300px"></textarea><br>
+				<textarea name="followcontent" style="width:100%;height:200px"></textarea><br>
 				<input type="hidden" name="followpermalink" value="'.$item->permalink.'">
 				<input type="submit" value="go">
 				</form>';
