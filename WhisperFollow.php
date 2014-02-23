@@ -190,7 +190,6 @@ function createthefollowpage(){
 	}
 }
 
-<<<<<<< HEAD
 function wf_publish_post($post_id) {
 global $wpdb;
 
@@ -214,8 +213,6 @@ wp_update_post($post);
 //do_action('wp_insert_post', $post_id, $post);
 }
 
-=======
->>>>>>> d7252d1adbcf849a0227aa1a9b7984c132e222c6
 function createthereblog($ftitle,$fcontent,$fcontext,$ftarget){
 	$cat = get_term_by('name', 'whispers', 'category');
 	if($cat){
@@ -233,15 +230,11 @@ function createthereblog($ftitle,$fcontent,$fcontext,$ftarget){
 	); 
 	$postid = wp_insert_post( $post, $wp_error );
 	set_post_format($postid,"aside");
-<<<<<<< HEAD
 	update_post_meta($postid,"context",urldecode($fcontext));
 	update_post_meta($postid,"contextTarget",urldecode($ftarget));
 	wf_publish_post( $postid);
 	//do_action('publish_post',$postid);
 
-=======
-	update_post_meta($postid,"context",$fcontext);
->>>>>>> d7252d1adbcf849a0227aa1a9b7984c132e222c6
 	whisperfollow_log("<br>sending webmention: ".get_permalink($postid)." : ".urldecode($ftarget)."<br>");
 	do_action('send_webmention', get_permalink($postid), urldecode($ftarget));
 	//echo "<p>Created post \"".$ftitle."\"</p>";
@@ -447,7 +440,7 @@ function whisperfollow_display($items,$time){
 				echo '<div id="reply-'.urlencode($item->permalink).'" style="display:none;">';
 				
 				foreach (get_posts(array('meta_key'=>'contextTarget','meta_value'=>$item->permalink)) as $existing){
-					echo '<p>Item previously reblogged: <a href="'.get_permalink($existing->ID).'">'.$existing->name.'</a></p>';
+					echo '<p>Item previously reblogged: <a href="'.get_permalink($existing->ID).'">'.($existing->post_name?:$existing->ID).'</a></p>';
 				}
 				echo '<form target="" method="POST">
 				Title:<br>
