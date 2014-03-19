@@ -226,6 +226,7 @@
 		if(strlen($hub) > 0){
 			whisperfollow_subscribe_to_push($followrss,$hub);
 		}
+		$link_id = wp_insert_link($linkdata);
 		
 		if($link_id <1){
 			echo "there was a problem adding the link";

@@ -208,8 +208,11 @@ function createthereblog($ftitle,$fcontent,$fcontext,$ftarget){
 	$postid = wp_insert_post( $post, $wp_error );
 	set_post_format($postid,"aside");
 	update_post_meta($postid,"context",$fcontext);
+	update_post_meta($postid,"contextTarget",urldecode($ftarget));
 	whisperfollow_log("<br>sending webmention: ".get_permalink($postid)." : ".urldecode($ftarget)."<br>");
+	do_action('publish_post', $postid);
 	do_action('send_webmention', get_permalink($postid), urldecode($ftarget));
+	
 	//echo "<p>Created post \"".$ftitle."\"</p>";
 }
     
