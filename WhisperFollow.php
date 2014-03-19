@@ -33,13 +33,13 @@
 $whisperfollow_db_version = "1.0";
 
 
-function whisperfollow_feed_time() { return 300; }
+function whisperfollow_feed_time() { return 60; }
 
 function whisperfollow_cron_definer($schedules){
 
-	$schedules['fivemins'] = array(
-		'interval'=> 300,
-		'display'=>  __('Once Every 5 Minutes')
+	$schedules['onemin'] = array(
+		'interval'=> 60,
+		'display'=>  __('Once Every Minute')
 	);
 
 	return $schedules;
@@ -139,7 +139,7 @@ function whisperfollow_install() {
 	}
 
 	if ( !wp_next_scheduled( 'whisperfollow_generate_hook' ) ) {            
-		wp_schedule_event( time(), 'fivemins', 'whisperfollow_generate_hook' );
+		wp_schedule_event( time(), 'onemin', 'whisperfollow_generate_hook' );
 	}
 	$isthereacat = false;
 	foreach (get_categories() as $category){
@@ -355,14 +355,22 @@ function whisperfollow_aggregator( $args = array() ) {
 	'category_name'  => 'Blogroll'
 	));
 	$feed_uris = array();
-	foreach($bookmarks as $bookmark){
-		if(rand(0,count($bookmarks))<100){
-			if(strlen($bookmark->link_rss)>0){
-				whisperfollow_log('<br/>checking '.$bookmark->link_name);
-				whisperfollow_aggregate( $bookmark->link_rss);
-			}else{
-				whisperfollow_mf2_read($bookmark->link_url);
-			}
+	
+	// loop through feeds every 15 minutes
+	$loopmin = 15;
+	
+	$currentmin = date("i") % $loopmin;
+	$startofbatch = $currentmin * count($bookmarks) / $loopmin;
+	$endofbatch = ($currentmin + 1) * count($bookmarks) / $loopmin;
+	whisperfollow_log('<br />batch size: ' . $startofbatch . " - " . $endofbatch);
+	for($i = ceil($startofbatch); $i < $endofbatch; $i ++){
+		whisperfollow_log('<br />checking number '.$i);
+		$bookmark = $bookmarks[$i];
+		if(strlen($bookmark->link_rss)>0){
+			whisperfollow_log('<br/>checking '.$bookmark->link_name);
+			whisperfollow_aggregate( $bookmark->link_rss);
+		}else{
+			whisperfollow_mf2_read($bookmark->link_url);
 		}
 	}
 	
