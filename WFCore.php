@@ -1,7 +1,7 @@
 <?php
 	require_once 'BarnabyWalters/Mf2/Functions.php';
-	//require_once 'Mf2/Parser.php';
-      use Mf2 as MF2P;
+	require_once 'Mf2/Parser.php';
+      	  use Mf2 as MF2P;
 	  use BarnabyWalters\Mf2 as BWMF2;
 	function curldo($url){
 		$curl_handle=curl_init();
@@ -237,7 +237,8 @@
 	}
 
 
-		function whisperfollow_mf2_read($page){
+		function whisperfollow_mf2_read($bookmark){
+			$page = $bookmark->link_rss;
 			whisperfollow_log("<br/>MF2 Parsing ".$page."<br/>");
 			try{
 				$output = MF2P\parse(curldo($page),$page);
@@ -254,7 +255,7 @@
 							$content = '<div class="p-in-reply-to h-cite"><blockquote class="p-content">'.$citation['properties']['content'][0].'</blockquote>Reblogged from <a href="'.$citation['properties']['url'][0].'" class="u-url">'.$citation['properties']['name'][0].'</div>'.$content;
 						}
 						whisperfollow_log("<br/>got ".$child['properties']['name'][0]." from ".$feeditem['properties']['title']?:$page."<br/>");
-						add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$feeditem['properties']['name'][0]?:$page,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])));
+						add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$feeditem['properties']['name'][0]?:$page,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])),$bookmark->link_image);
 					
 					
 				}
@@ -264,8 +265,11 @@
 				
 		}
 
-		function whisperfollow_aggregate($feeds,$pushed=false){
-			whisperfollow_log("Aggregating feeds:".count(feeds));
+		function whisperfollow_aggregate($bookmark,$pushed=false){
+			$feeds = $bookmark->link_rss;
+
+			whisperfollow_log("Aggregating bookmark:".print_r($bookmark,true));
+			whisperfollow_log("Aggregating feeds:".count($feeds));
 			if ( !empty( $feeds ) ) {
 				
 				//whisperfollow_log('<br/>feeds: '.print_r($feeds,true));
@@ -291,7 +295,7 @@
 				foreach ($items as $item){
 					try{
 						whisperfollow_log("<br/>got ".$item->get_title()." from ". $item->get_feed()->get_title()."<br/>");
-						add_whisper($item->get_permalink(),$item->get_title(),html_entity_decode ($item->get_description()),$item->get_feed()->get_title(),$item->get_feed()->get_link(),$item->get_date("U"));
+						add_whisper($item->get_permalink(),$item->get_title(),html_entity_decode ($item->get_description()),$item->get_feed()->get_title(),$item->get_feed()->get_link(),$item->get_date("U"),$bookmark->link_image);
 					}catch(Exception $e){
 						whisperfollow_log("Exception occured: ".$e->getMessage());
 					}

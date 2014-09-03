@@ -15,8 +15,7 @@ In it's current form it aggregates RSS feeds in a page on your blog called "foll
 The links it aggregates are the ones from your blogroll with rss feed data.
 Reblogs are automatically in the "whispers" category which can be excluded from pages if you like using plugins like [Simply-Exclude](http://wordpress.org/extend/plugins/simply-exclude/).
 
-This plugin will be updated to be ostatus compatible working with the [ostatus-for-wordpress](http://wordpress.org/extend/plugins/ostatus-for-wordpress/) plugin.
-
+This plugin depends on the plugins indieweb-custom-taxonomy and json-api If you havent got them, you'll have issues.
 == Installation ==
 
 This section describes how to install the plugin and get it working.
@@ -36,12 +35,15 @@ The page is initally private but if you open it in the page editor and make it p
 
 = How do I add links? =
 
-You can add things to your blogroll using the links editor in the Wordpress admin section which is recommended.
-You can also add things using the quick add box at the bottom of the page.
+You can add things to your blogroll using the links editor in the Wordpress admin section.
 
 
 == Changelog ==
 
+= 1.4.0 =
+* Major Rejiggering to the interface. Now with fancy new infinite scrolling!
+* The metadata for reblogs etc has also changed to align with some vague indieweb conspiracy
+* now has plugin dependencies indieweb-custom-taxonomy and json-api so get those
 
 = 1.3.0 =
 * Many minor bugfixes

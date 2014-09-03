@@ -33,13 +33,13 @@
 $whisperfollow_db_version = "1.0";
 
 
-function whisperfollow_feed_time() { return 60; }
+function whisperfollow_feed_time() { return 300; }
 
 function whisperfollow_cron_definer($schedules){
 
-	$schedules['onemin'] = array(
-		'interval'=> 60,
-		'display'=>  __('Once Every Minute')
+	$schedules['fivemins'] = array(
+		'interval'=> 300,
+		'display'=>  __('Once Every 5 Minutes')
 	);
 
 	return $schedules;
@@ -139,7 +139,7 @@ function whisperfollow_install() {
 	}
 
 	if ( !wp_next_scheduled( 'whisperfollow_generate_hook' ) ) {            
-		wp_schedule_event( time(), 'onemin', 'whisperfollow_generate_hook' );
+		wp_schedule_event( time(), 'fivemins', 'whisperfollow_generate_hook' );
 	}
 	$isthereacat = false;
 	foreach (get_categories() as $category){
@@ -355,22 +355,14 @@ function whisperfollow_aggregator( $args = array() ) {
 	'category_name'  => 'Blogroll'
 	));
 	$feed_uris = array();
-	
-	// loop through feeds every 15 minutes
-	$loopmin = 15;
-	
-	$currentmin = date("i") % $loopmin;
-	$startofbatch = $currentmin * count($bookmarks) / $loopmin;
-	$endofbatch = ($currentmin + 1) * count($bookmarks) / $loopmin;
-	whisperfollow_log('<br />batch size: ' . $startofbatch . " - " . $endofbatch);
-	for($i = ceil($startofbatch); $i < $endofbatch; $i ++){
-		whisperfollow_log('<br />checking number '.$i);
-		$bookmark = $bookmarks[$i];
-		if(strlen($bookmark->link_rss)>0){
-			whisperfollow_log('<br/>checking '.$bookmark->link_name);
-			whisperfollow_aggregate( $bookmark->link_rss);
-		}else{
-			whisperfollow_mf2_read($bookmark->link_url);
+	foreach($bookmarks as $bookmark){
+		if(rand(0,count($bookmarks))<100){
+			if(strlen($bookmark->link_rss)>0){
+				whisperfollow_log('<br/>checking '.$bookmark->link_name);
+				whisperfollow_aggregate( $bookmark);
+			}else{
+				whisperfollow_mf2_read($bookmark);
+			}
 		}
 	}
 	
@@ -405,11 +397,11 @@ function whisperfollow_page($items){
 		}elseif(current_user_can('manage_options')){
 			$fpage = $wp_query->query_vars['followpage'];
 		}else{
-			echo '<p>Only the owner of this page can view their <a href="http://wordpress.org/extend/plugins/whisperfollow">WhisperFollow</a> feed.</p>';
+			echo '<p>Only <a href="'.wp_login_url( get_permalink() ).'">the owner of this page</a> can view their <a href="http://wordpress.org/extend/plugins/whisperfollow">WhisperFollow</a> feed.</p>';
 			return;
 		}
 	}elseif(!current_user_can('manage_options')){
-		echo '<p>Only the owner of this page can view their <a href="http://wordpress.org/extend/plugins/whisperfollow">WhisperFollow</a> feed.</p>';
+		echo '<p>Only <a href="'.wp_login_url( get_permalink() ).'">the owner of this page</a> can view their <a href="http://wordpress.org/extend/plugins/whisperfollow">WhisperFollow</a> feed.</p>';
 		return;
 	}
 	if(isset($_POST['follownewaddress'])&&current_user_can('manage_options')){
@@ -422,21 +414,26 @@ function whisperfollow_page($items){
 		whisperfollow_log("check forced by user");
 		whisperfollow_aggregator();
 	}
+	$where = "";
+	if(isset($_POST['followsearch'])){
+		$where = " WHERE `authorname` like '%".$_POST['followsearch']."%' OR `content` like '%".$_POST['followsearch']."%' ";
+	}
 	$items = $wpdb->get_results(
 		'SELECT * 
-		FROM  `'.$wpdb->prefix . 'whisperfollow` 
+		FROM  `'.$wpdb->prefix . 'whisperfollow` '.$where.'
 		ORDER BY  `id` DESC 
 		LIMIT '.($fpage*$length).' , '.$length.';'
 	);
-	      
-	whisperfollow_display($items,'Items');
-	echo '<div style="clear: both;">';
-	if($fpage > 0){
-		echo '<p style="float: left;"><a href="'.site_url().followinglink().($fpage-1).'" >Newer</a></p>';
-	}
-	echo '<p style="float: right;"><a href="'.site_url().followinglink().($fpage+1).'" >Older</a></p></div>';
-	echo '<div style="clear: both;"><form target="" method="POST">New Follow: <input type="TEXT" name="follownewaddress"><input type="SUBMIT" value="go"><br><input type="submit" name="forcecheck" value="forcecheck"></form></div>';
-	echo '\n<script type="text/javascript">jQuery(document).ready(function($) {$(".followContextToggle").change(function(){$(this).siblings().next(".followContextBox").toggle($(this).prop("checked"));$(this).siblings().next(".followContextBox").attr("disabled",!$(this).prop("checked"))});});</script>';
+	echo whisperfollow_ajax_display();
+	
+//	whisperfollow_display($items,'Items');
+//	echo '<div style="clear: both;">';
+//	if($fpage > 0){
+//		echo '<p style="float: left;"><a href="'.site_url().followinglink().($fpage-1).'" >Newer</a></p>';
+//	}
+//	echo '<p style="float: right;"><a href="'.site_url().followinglink().($fpage+1).'" >Older</a></p></div>';
+//	echo '<div style="clear: both;"><form target="" method="POST">New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br><input type="submit" name="forcecheck" value="forcecheck"></form></div>';
+//	echo '\n<script type="text/javascript">jQuery(document).ready(function($) {$(".followContextToggle").change(function(){$(this).siblings().next(".followContextBox").toggle($(this).prop("checked"));$(this).siblings().next(".followContextBox").attr("disabled",!$(this).prop("checked"))});});</script>';
 }
     
 function whisperfollow_display($items,$time){
@@ -453,9 +450,11 @@ function whisperfollow_display($items,$time){
 				foreach (get_posts(array('meta_key'=>'contextTarget','meta_value'=>$item->permalink)) as $existing){
 					echo '<p>Item previously reblogged: <a href="'.get_permalink($existing->ID).'">'.($existing->post_name?:$existing->ID).'</a></p>';
 				}
+				$explodedtitle = explode("<br/>\n",wordwrap(htmlspecialchars($item->authorname.": ".$item->title),75,"<br/>\n"));
+				
 				echo '<form target="" method="POST">
 				Title:<br>
-				<input type="text" name="followtitle" value="'.htmlspecialchars($item->authorname.": ".$item->title).'"><br>
+				<input type="text" name="followtitle" value="'.$explodedtitle[0].(count($explodedtitle)>1?"...":"").'"><br>
 				Citation:
 				<input type="hidden" name="followcontexttarget" value="'.urlencode($item->permalink).'"/>
 				<input type="hidden" name="followcontexttitle" value="'.htmlspecialchars($item->authorname.": ".$item->title).'"/>
@@ -511,6 +510,147 @@ function save_error(){
 }
 
 
+
+function whisperfollow_api_init() {
+	global $whisperfollow_api_whisper;
+
+	$whisperfollow_api_whisper = new WhisperFollow_API_Whisper();
+	add_filter( 'json_endpoints', array( $whisperfollow_api_whisper, 'register_routes' ) );
+}
+add_action( 'wp_json_server_before_serve', 'whisperfollow_api_init' );
+
+class WhisperFollow_API_Whisper {
+	public function register_routes( $routes ) {
+		$routes['/whisperfollow/whispers'] = array(
+			array( array( $this, 'get_posts'), WP_JSON_Server::READABLE ),
+			array( array( $this, 'new_post'), WP_JSON_Server::CREATABLE | WP_JSON_Server::ACCEPT_JSON ),
+		);
+		$routes['/whisperfollow/whispers/(?P<id>\d+)'] = array(
+			array( array( $this, 'get_post'), WP_JSON_Server::READABLE ),
+			array( array( $this, 'edit_post'), WP_JSON_Server::EDITABLE | WP_JSON_Server::ACCEPT_JSON ),
+			array( array( $this, 'delete_post'), WP_JSON_Server::DELETABLE ),
+		);
+
+		// Add more custom routes here
+
+		return $routes;
+	}
+	public function get_posts( $filter = array(), $context = 'view', $type = 'post', $page = 1, $offset = 0) {
+		global $wpdb; 
+		$length = 10;
+		$where = "";
+		if($offset > 0){
+			$where = "where `id` <= ".$offset;
+		}
+		$items = $wpdb->get_results(
+		'SELECT * 
+		FROM  `'.$wpdb->prefix . 'whisperfollow` '.$where.'
+		ORDER BY  `id` DESC 
+		LIMIT '.(($page-1)*$length).' , '.$length.';'
+		);
+		return $items;
+	}
+	public function get_post( $id, $context = 'view' ) {
+		global $wpdb; 
+		$length = 10;
+		$where = "";
+		$items = $wpdb->get_row(
+		'SELECT * 
+		FROM  `'.$wpdb->prefix . 'whisperfollow` WHERE `id` = '.$id.';'
+		);
+		return $items;
+	}
+
+	// ...
+}
+
+function whisperfollow_ajax_display(){
+return <<<'EOD'
+
+<div style="clear: both;"><form target="" method="POST">
+<!--New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br>--!>
+<input type="submit" name="forcecheck" value="forcecheck"></form></div>
+
+<div id="wfd"></div>
+<input type="button" id="wfdnext" value="load" onclick="dothething()"><code>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script>
+function dothething(){
+        if(typeof window.whispersloading === "undefined" || window.whispersloading == false){
+        whispersloading = true;
+        $("#wfdnext").val("loading...");
+        if(typeof window.whisperpagecount === "undefined"){
+            window.whisperpagecount = 0;
+        }
+        if(typeof window.listedwhispers === "undefined"){
+            window.listedwhispers = [];
+        }
+        if(typeof window.whisperoffset === "undefined"){
+            window.whisperoffset = "";
+        }
+        window.whisperpagecount += 1;
+        console.log("button were pressed "+window.whisperpagecount.toString());
+        $.getJSON( "../wp-json/whisperfollow/whispers?page="+window.whisperpagecount.toString()+window.whisperoffset, function( data ) {
+           var tempmax = 0;
+           $.each( data, function( key, val ) {
+             if(window.listedwhispers.indexOf(val.permalink) < 0){
+                 $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+val.content+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
+                 if(val.id > tempmax){
+                     tempmax = val.id;
+                 }
+                 window.listedwhispers[window.listedwhispers.length] = val.permalink;
+             }
+           });
+           blockQuoteExpander();
+           if(window.whisperoffset == ""){
+               window.whisperoffset = "&offset="+tempmax.toString();
+           }
+           window.whispersloading = false;
+           $("#wfdnext").val("load more");
+        });
+    }
+    }
+win = $(window),
+    doc = $(document);
+
+win.scroll(function(){
+    if( isScrolledIntoView($("#wfdnext")) ) {
+        dothething();
+    }
+});
+
+function isScrolledIntoView(elem)
+{
+    var docViewTop = $(window).scrollTop();
+    var docViewBottom = docViewTop + $(window).height();
+
+    var elemTop = $(elem).offset().top;
+    var elemBottom = elemTop + $(elem).height();
+
+    return ((elemBottom <= docViewBottom) && (elemTop >= docViewTop));
+}
+
+function reblog(id){
+    window.reblogchild = window.open("../wp-admin/post-new.php","newpostwindow","height=768,width=1024");
+    $(window.reblogchild).load(function() {
+
+        console.log("window ready");
+        $("#title",window.reblogchild.document).val($("#whisper"+id+" .whisperauthor").text()+": "+$("#whisper"+id+" .whispertitle").text());
+        $("#response_title",window.reblogchild.document).val($("#whisper"+id+" .whispertitle").text().substring(0, 125)+($("#whisper"+id+" .whispertitle").text().length > 125?"...":""));
+        $("#response_quote",window.reblogchild.document).val($("#whisper"+id+" .whispercontent").html());
+        $("#response_url",window.reblogchild.document).val($("#whisper"+id+" .whisperpermalink").attr("href"));
+        $("#kindchecklist li label:contains('Repost') input",window.reblogchild.document).prop('checked', true);
+        $("#categorychecklist li label:contains('whispers') input",window.reblogchild.document).prop('checked', true);
+        $("#post-format-aside",window.reblogchild.document).prop('checked', true);
+   });
+}
+</script></code>
+
+
+
+EOD;
+
+}
 
 
 
