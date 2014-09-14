@@ -295,7 +295,14 @@
 				foreach ($items as $item){
 					try{
 						whisperfollow_log("<br/>got ".$item->get_title()." from ". $item->get_feed()->get_title()."<br/>");
-						add_whisper($item->get_permalink(),$item->get_title(),html_entity_decode ($item->get_description()),$item->get_feed()->get_title(),$item->get_feed()->get_link(),$item->get_date("U"),$bookmark->link_image);
+						$content = html_entity_decode ($item->get_description());
+							foreach ($item->get_enclosures() as $enclosure)
+							{
+								if(strlen($enclosure->get_link()) > 0){
+									$content .= "<p><embed src=\"".$enclosure->get_link()."\" type=\"".$enclosure->get_type()."\" autoplay=\"false\" preload=\"none\"> - <a href=\"".$enclosure->get_link()."\">LINK</a></p>";
+								}
+							}
+						add_whisper($item->get_permalink(),$item->get_title(),$content,$item->get_feed()->get_title(),$item->get_feed()->get_link(),$item->get_date("U"),$bookmark->link_image);
 					}catch(Exception $e){
 						whisperfollow_log("Exception occured: ".$e->getMessage());
 					}

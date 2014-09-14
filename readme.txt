@@ -15,7 +15,8 @@ In it's current form it aggregates RSS feeds in a page on your blog called "foll
 The links it aggregates are the ones from your blogroll with rss feed data.
 Reblogs are automatically in the "whispers" category which can be excluded from pages if you like using plugins like [Simply-Exclude](http://wordpress.org/extend/plugins/simply-exclude/).
 
-This plugin depends on the plugins indieweb-custom-taxonomy and json-api If you havent got them, you'll have issues.
+This plugin will be updated to be ostatus compatible working with the [ostatus-for-wordpress](http://wordpress.org/extend/plugins/ostatus-for-wordpress/) plugin.
+
 == Installation ==
 
 This section describes how to install the plugin and get it working.
@@ -35,10 +36,16 @@ The page is initally private but if you open it in the page editor and make it p
 
 = How do I add links? =
 
-You can add things to your blogroll using the links editor in the Wordpress admin section.
+You can add things to your blogroll using the links editor in the Wordpress admin section which is recommended.
+You can also add things using the quick add box at the bottom of the page.
 
 
 == Changelog ==
+
+= 1.5.0 =
+* added support for attached media in streams
+* added search function
+* added page skip functions
 
 = 1.4.0 =
 * Major Rejiggering to the interface. Now with fancy new infinite scrolling!
@@ -52,7 +59,6 @@ You can add things to your blogroll using the links editor in the Wordpress admi
 
 = 1.2.4 =
 * Fixed the error preventing whispers to actually be added to the wall created from last bugfix
-
 = 1.2.3 =
 * Fixed installation errors created by the logging function >.<
 

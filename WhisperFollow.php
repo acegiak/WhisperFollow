@@ -421,7 +421,7 @@ function whisperfollow_page($items){
 	$items = $wpdb->get_results(
 		'SELECT * 
 		FROM  `'.$wpdb->prefix . 'whisperfollow` '.$where.'
-		ORDER BY  `id` DESC 
+		ORDER BY  `time` DESC 
 		LIMIT '.($fpage*$length).' , '.$length.';'
 	);
 	echo whisperfollow_ajax_display();
@@ -535,18 +535,25 @@ class WhisperFollow_API_Whisper {
 
 		return $routes;
 	}
-	public function get_posts( $filter = array(), $context = 'view', $type = 'post', $page = 1, $offset = 0) {
+	public function get_posts( $filter = array(), $context = 'view', $type = 'post', $page = 1, $offset = 0, $search = "") {
 		global $wpdb; 
 		$length = 10;
 		$where = "";
 		if($offset > 0){
 			$where = "where `id` <= ".$offset;
 		}
+		if(strlen($search) > 0){
+			if(strlen($where) <= 0){
+				$where = "where";
+			}else{
+				$where .= " and";
+			}
+			$where .= " (`authorname` like '%".$search."%' or `authorurl` like '%".$search."%' or `content` like '%".$search."%')";
+		}
+		$query = 'SELECT * FROM  `'.$wpdb->prefix . 'whisperfollow` '.$where.' ORDER BY  `time` DESC LIMIT '.(($page-1)*$length).' , '.$length.';';
+		error_log("Json query: ".$query);
 		$items = $wpdb->get_results(
-		'SELECT * 
-		FROM  `'.$wpdb->prefix . 'whisperfollow` '.$where.'
-		ORDER BY  `id` DESC 
-		LIMIT '.(($page-1)*$length).' , '.$length.';'
+			$query
 		);
 		return $items;
 	}
@@ -567,7 +574,7 @@ class WhisperFollow_API_Whisper {
 function whisperfollow_ajax_display(){
 return <<<'EOD'
 
-<div style="clear: both;"><form target="" method="POST">
+<div class="whispercontrols"><label for="whispersearch">Search:</label><input type="text" name="whispersearch" id="whispersearch"><br/><label for="whisperpage">Page:</label><input type="text" name="whisperpage" id="whisperpage"><br/><form target="" method="POST">
 <!--New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br>--!>
 <input type="submit" name="forcecheck" value="forcecheck"></form></div>
 
@@ -588,15 +595,23 @@ function dothething(){
         if(typeof window.whisperoffset === "undefined"){
             window.whisperoffset = "";
         }
+        if(typeof window.whispersearchterm === "undefined"){
+            window.whispersearchterm = "";
+        }
+	if($("#whispersearch").val().length >0){
+		window.whispersearchterm = "&search="+encodeURIComponent($("#whispersearch").val());
+	}
         window.whisperpagecount += 1;
         console.log("button were pressed "+window.whisperpagecount.toString());
-        $.getJSON( "../wp-json/whisperfollow/whispers?page="+window.whisperpagecount.toString()+window.whisperoffset, function( data ) {
+        $.getJSON( "../wp-json/whisperfollow/whispers?page="+window.whisperpagecount.toString()+window.whisperoffset+window.whispersearchterm, function( data ) {
            var tempmax = 0;
            $.each( data, function( key, val ) {
              if(window.listedwhispers.indexOf(val.permalink) < 0){
                  $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+val.content+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
+		console.log("id check:"+val.id.toString());
                  if(val.id > tempmax){
                      tempmax = val.id;
+			console.log("set to new max");
                  }
                  window.listedwhispers[window.listedwhispers.length] = val.permalink;
              }
@@ -611,8 +626,25 @@ function dothething(){
     }
     }
 win = $(window),
-    doc = $(document);
+doc = $(document);
+doc.ready(function(){
+	$("#whispersearch").on('input propertychange paste', function() {
+		$("#wfd").empty();
 
+		if($("#whispersearch").val().length <= 0){
+			window.whispersearchterm = "";
+		}
+		window.whisperpagecount = 0;
+           	window.listedwhispers = [];
+           	$("#wfdnext").val("load");
+	});
+	$("#whisperpage").on('input propertychange paste', function() {
+		$("#wfd").empty();
+		window.whisperpagecount = parseInt($("#whisperpage").val())-1;
+           	window.listedwhispers = [];
+           	$("#wfdnext").val("load");
+	});
+});
 win.scroll(function(){
     if( isScrolledIntoView($("#wfdnext")) ) {
         dothething();
