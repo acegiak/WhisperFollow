@@ -17,7 +17,7 @@
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-    GNU General Public License for more details.
+    GNU General Public License for more details.o
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
@@ -279,10 +279,17 @@ function whisperfollow_shortcode( $atts ) {
 }
 
 function whisperfollow_newfollow($examineurl){
-	include('wp-admin/includes/bookmark.php');
+	require_once('wp-admin/includes/bookmark.php');
 	$linkdata = WFCore_newfollow($examineurl);
 	
 	$link_id = wp_insert_link( $linkdata );
+
+		
+		if($link_id <1){
+			echo "there was a problem adding the link";
+		}else{
+			echo "subscribed to ".$linkdata['link_name']."!";
+		}
 }
 
 
@@ -486,6 +493,7 @@ function whisperfollow_log($message,$verbose=true){
 	}
 	$log = ((string)date('r')).": ".(string)$message.$log;
 	update_option('whisperfollow_log',substr($log,0,100000));
+	return message;
 }
 
 add_shortcode( 'whisperfollow_page', 'whisperfollow_shortcode');
@@ -515,7 +523,9 @@ function whisperfollow_api_init() {
 	global $whisperfollow_api_whisper;
 
 	$whisperfollow_api_whisper = new WhisperFollow_API_Whisper();
+	$whisperfollow_api_follow = new WhisperFollow_API_Follow();
 	add_filter( 'json_endpoints', array( $whisperfollow_api_whisper, 'register_routes' ) );
+	add_filter( 'json_endpoints', array( $whisperfollow_api_follow, 'register_routes' ) );
 }
 add_action( 'wp_json_server_before_serve', 'whisperfollow_api_init' );
 
@@ -523,12 +533,10 @@ class WhisperFollow_API_Whisper {
 	public function register_routes( $routes ) {
 		$routes['/whisperfollow/whispers'] = array(
 			array( array( $this, 'get_posts'), WP_JSON_Server::READABLE ),
-			array( array( $this, 'new_post'), WP_JSON_Server::CREATABLE | WP_JSON_Server::ACCEPT_JSON ),
 		);
 		$routes['/whisperfollow/whispers/(?P<id>\d+)'] = array(
 			array( array( $this, 'get_post'), WP_JSON_Server::READABLE ),
-			array( array( $this, 'edit_post'), WP_JSON_Server::EDITABLE | WP_JSON_Server::ACCEPT_JSON ),
-			array( array( $this, 'delete_post'), WP_JSON_Server::DELETABLE ),
+
 		);
 
 		// Add more custom routes here
@@ -571,17 +579,144 @@ class WhisperFollow_API_Whisper {
 	// ...
 }
 
+
+class WhisperFollow_API_Follow {
+	public function register_routes( $routes ) {
+		$routes['/whisperfollow/follows'] = array(
+			array( array( $this, 'new_post'), WP_JSON_Server::CREATABLE | WP_JSON_Server::ACCEPT_JSON )
+		);
+
+		// Add more custom routes here
+
+		return $routes;
+	}
+	public function new_post( $data ) {
+
+	require_once('wp-admin/includes/bookmark.php');
+
+		$notes = array();
+		if(isset($data['twitter'])){
+			$notes['twitter'] = $data['twitter'];
+		}
+		if(isset($data['tumblr'])){
+			$notes['tumblr'] = "<a href='http://".$data['tumblr'].".tumblr.com'>".$data['tumblr']."</a>";
+		}
+		$data['link_notes'] = json_encode($notes);
+		if(isset($data['link_id'])){
+			unset($data['link_id']);
+		}
+		if(!isset($data['link_url'])){
+			return whisperfollow_log("error: no url defined for new follow");
+		}
+		$lookup =  WFCore_newfollow($data['link_url']);
+
+		$data['link_url']  = $lookup['link_url'];
+		
+		if(!isset($data['link_name']) && isset($lookup['link_name'])){
+			$data['link_name']  = $lookup['link_name'];
+		}
+		if(!isset($data['link_rss']) && isset($lookup['link_rss'])){
+			$data['link_rss']  = $lookup['link_rss'];
+		}
+		if(!isset($data['link_image']) && isset($lookup['link_image'])){
+			$data['link_image']  = $lookup['link_image'];
+		}
+		
+		$link_id = wp_insert_link( $data );
+
+	
+		if($link_id <1){
+			$r =  json_ensure_response(whisperfollow_log( "there was a problem adding the link", false));
+			
+			$r->set_status( 400 );
+			return $r;
+		}else{
+			whisperfollow_log( "added new follow: ".$data['link_name'], false);
+			$r =  json_ensure_response($data);
+			
+			$r->set_status( 201 );
+			return $r;
+		}
+	}
+
+	// ...
+}
+
 function whisperfollow_ajax_display(){
 return <<<'EOD'
 
 <div class="whispercontrols"><label for="whispersearch">Search:</label><input type="text" name="whispersearch" id="whispersearch"><br/><label for="whisperpage">Page:</label><input type="text" name="whisperpage" id="whisperpage"><br/><form target="" method="POST">
 <!--New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br>--!>
-<input type="submit" name="forcecheck" value="forcecheck"></form></div>
+<input type="submit" name="forcecheck" value="forcecheck"></form>
+<input type="button" value="new" onclick="toggleNewFollow()">
+<div id="whispernewfollow">
+<label for="whispernewurl">url*:</label>
+<input type="text" id="whispernewurl" name="whispernewurl">
+<label for="whispernewname">name:</label>
+<input type="text" id="whispernewname" name="whispernewname">
+<label for="whispernewrss">rss:</label>
+<input type="text" id="whispernewrss" name="whispernewrss">
+<label for="whispernewicon">icon:</label>
+<input type="text" id="whispernewicon" name="whispernewicon">
+<label for="whispernewtwitter">twitter:</label>
+<input type="text" id="whispernewtwitter" name = "whispernewtwitter">
+<label for="whispernewtumblr">tumblr:</label>
+<input type="text" id="whispernewtumblr" name = "whispernewtumblr">
+<input type="button" onclick="newfollow()" value="follow"><div id="newfollowstatus"></div>
+</div>
+</div>
 
 <div id="wfd"></div>
 <input type="button" id="wfdnext" value="load" onclick="dothething()"><code>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
 <script>
+function toggleNewFollow(){
+	$("#whispernewfollow").toggle();
+}
+function newfollow(){
+                var content = {	}
+		
+		if($("#whispernewurl").val().length >0){
+			content['link_url'] = $("#whispernewurl").val();
+		}
+		if($("#whispernewname").val().length >0){
+			content['link_name'] = $("#whispernewname").val();
+		}
+		if($("#whispernewicon").val().length >0){
+			content['link_image'] = $("#whispernewicon").val();
+		}
+		if($("#whispernewrss").val().length >0){
+			content['link_rss'] = $("#whispernewrss").val();
+		}
+		if($("#whispernewtwitter").val().length >0){
+			content['twitter'] = $("#whispernewtwitter").val();
+		}
+		if($("#whispernewtumblr").val().length >0){
+			content['tumblr'] = $("#whispernewtumblr").val();
+		}
+
+	
+						
+		var options = {
+						data:JSON.stringify(content),
+						url:'../wp-json/whisperfollow/follows',
+						type:'POST',
+						dataType:'json',
+						contentType: 'application/javascript',
+						complete:function(xhr,status){
+							console.log(xhr);
+							if(status == "success"){
+								$("#newfollowstatus").append("<p>Subscribed to: "+xhr['responseJSON']['link_name']+"</p>");
+							}else{
+								$("#newfollowstatus").append("<p>An error occured</p>");
+							}
+							console.log(status);
+
+						}
+					}
+		$.ajax(options);
+}
+
 function dothething(){
         if(typeof window.whispersloading === "undefined" || window.whispersloading == false){
         whispersloading = true;
@@ -607,7 +742,7 @@ function dothething(){
            var tempmax = 0;
            $.each( data, function( key, val ) {
              if(window.listedwhispers.indexOf(val.permalink) < 0){
-                 $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+val.content+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
+                 $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+val.content+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a><span class='whispertime'>"+val.time+"</span></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
 		console.log("id check:"+val.id.toString());
                  if(val.id > tempmax){
                      tempmax = val.id;
@@ -644,6 +779,9 @@ doc.ready(function(){
            	window.listedwhispers = [];
            	$("#wfdnext").val("load");
 	});
+
+
+	$("#whispernewfollow").hide();
 });
 win.scroll(function(){
     if( isScrolledIntoView($("#wfdnext")) ) {
@@ -667,8 +805,10 @@ function reblog(id){
     $(window.reblogchild).load(function() {
 
         console.log("window ready");
-        $("#title",window.reblogchild.document).val($("#whisper"+id+" .whisperauthor").text()+": "+$("#whisper"+id+" .whispertitle").text());
-        $("#response_title",window.reblogchild.document).val($("#whisper"+id+" .whispertitle").text().substring(0, 125)+($("#whisper"+id+" .whispertitle").text().length > 125?"...":""));
+
+	var whispertitle = $("#whisper"+id+" .whisperauthor").text()+": "+$("#whisper"+id+" .whispertitle").text();
+        $("#title",window.reblogchild.document).val(whispertitle);
+        $("#response_title",window.reblogchild.document).val(whispertitle.substring(0, 125)+(whispertitle.length > 125?"...":""));
         $("#response_quote",window.reblogchild.document).val($("#whisper"+id+" .whispercontent").html());
         $("#response_url",window.reblogchild.document).val($("#whisper"+id+" .whisperpermalink").attr("href"));
         $("#kindchecklist li label:contains('Repost') input",window.reblogchild.document).prop('checked', true);

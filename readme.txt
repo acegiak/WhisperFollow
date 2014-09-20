@@ -42,6 +42,9 @@ You can also add things using the quick add box at the bottom of the page.
 
 == Changelog ==
 
+= 1.5.1 =
+* readded quick follow function
+
 = 1.5.0 =
 * added support for attached media in streams
 * added search function

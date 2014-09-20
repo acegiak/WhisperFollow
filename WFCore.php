@@ -1,7 +1,10 @@
 <?php
 	require_once 'BarnabyWalters/Mf2/Functions.php';
-	require_once 'Mf2/Parser.php';
-      	  use Mf2 as MF2P;
+	if(!class_exists ("Mf2",false)){
+		require_once 'Mf2/Parser.php';
+	}
+      	use Mf2;
+	
 	  use BarnabyWalters\Mf2 as BWMF2;
 	function curldo($url){
 		$curl_handle=curl_init();
@@ -16,9 +19,6 @@
 		$dom = new DOMDocument();
 		$dom->loadXML($fulltext);
 		$image = $dom->getElementsByTagName('image');
-		if(!$head->length >0){
-			return "";
-		}else{
 			$image = $image->item(0);
 			$url = $image->getElementsByTagName('url');
 			if($url->length >0){
@@ -31,7 +31,7 @@
 			}else{
 				return "";
 			}
-		}
+		
 	}
 
 
@@ -61,9 +61,9 @@
 		$dom = new DOMDocument();
 		$dom->loadXML($fulltext);
 		$head = $dom->getElementsByTagName('link');
-		echo "<br/>links now: ";
+		whisperfollow_log("<br/>links now: ",false);
 		foreach ($head as $item) {
-			echo $item->nodeValue . "\n";
+			whisperfollow_log($item->nodeValue . "\n",false);
 			if(strlen(trim($item->nodeValue)) > 0){
 				$r = $item->nodeValue;
 				return $r;
@@ -78,10 +78,10 @@
 		$dom = new DOMDocument();
 		$dom->loadXML($fulltext);
 		$head = $dom->getElementsByTagName('link');
-		echo "<br/>hubs now: ";
+		whisperfollow_log("<br/>hubs now: ",false);
 		foreach ($head as $item) {
 			if($item->hasAttribute("href")){
-				echo $item->getAttribute("href");
+				whisperfollow_log($item->getAttribute("href"),false);
 				if($item->getAttribute("rel") == "hub"){
 					return $item->getAttribute("href");
 				}
@@ -94,19 +94,19 @@
 		$dom = new DOMDocument();
 		$dom->loadXML($fulltext);
 		$head = $dom->getElementsByTagName('link');
-		echo "<br/>self now: ";
+		whisperfollow_log("<br/>self now: ",false);
 		foreach ($head as $item) {
 			if($item->hasAttribute("href")){
-				echo $item->getAttribute("href");
+				whisperfollow_log($item->getAttribute("href"),false);
 				if($item->getAttribute("rel") == "self"){
 					return $item->getAttribute("href");
 				}
 			}
 		}
-		echo '<br/>no self found in links';
+		whisperfollow_log('<br/>no self found in links',false);
 		
 		$head = $dom->getElementsByTagName('status');
-		echo "<br/>self now: ";
+		whisperfollow_log("<br/>self now: ",false);
 		foreach ($head as $item) {
 			if($item->hasAttribute("feed")){
 				return $item->getAttribute("feed");
@@ -187,12 +187,12 @@
 		}
 		$buffer = curldo($examineurl);
 		if (empty($buffer)){
-		echo "Error: Could not access ".$examineurl;
+		whisperfollow_log( "Error: Could not access ".$examineurl,false);
 		}
 		$hub = '';
 		$image='';
 		if(preg_match("`(\<![^\>]*\>|)\<(rss|atom|feed) `i",$buffer)){
-			echo $examineurl." is a feed!";
+			whisperfollow_log( $examineurl." is a feed!",false);
 			$followurl = rss_linkget($buffer);
 			$hub = rss_hubget($buffer);
 			$image = rss_imageget($buffer);
@@ -211,7 +211,7 @@
 				$hub = rss_hubget($rssgot);
 				$image = rss_imageget($rssgot);
 			}else{
-				echo "there are no feeds here!";
+				whisperfollow_log( "there are no feeds here!",false);
 				return;
 			}
 
@@ -226,13 +226,7 @@
 		if(strlen($hub) > 0){
 			whisperfollow_subscribe_to_push($followrss,$hub);
 		}
-		$link_id = wp_insert_link($linkdata);
-		
-		if($link_id <1){
-			echo "there was a problem adding the link";
-		}else{
-			echo "subscribed to ".$followtitle."!";
-		}
+
 		return $linkdata;
 	}
 
@@ -241,7 +235,7 @@
 			$page = $bookmark->link_rss;
 			whisperfollow_log("<br/>MF2 Parsing ".$page."<br/>");
 			try{
-				$output = MF2P\parse(curldo($page),$page);
+				$output = MF2\parse(curldo($page),$page);
 				
 				$feeditem = BWMF2\findMicroformatsByType($output,'h-feed',true);
 				$children = BWMF2\findMicroformatsByType($output,'h-entry',true);
@@ -255,7 +249,7 @@
 							$content = '<div class="p-in-reply-to h-cite"><blockquote class="p-content">'.$citation['properties']['content'][0].'</blockquote>Reblogged from <a href="'.$citation['properties']['url'][0].'" class="u-url">'.$citation['properties']['name'][0].'</div>'.$content;
 						}
 						whisperfollow_log("<br/>got ".$child['properties']['name'][0]." from ".$feeditem['properties']['title']?:$page."<br/>");
-						add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$feeditem['properties']['name'][0]?:$page,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])),$bookmark->link_image);
+						add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$bookmark->link_name,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])),$bookmark->link_image);
 					
 					
 				}
@@ -298,11 +292,17 @@
 						$content = html_entity_decode ($item->get_description());
 							foreach ($item->get_enclosures() as $enclosure)
 							{
-								if(strlen($enclosure->get_link()) > 0){
+								if(strlen($enclosure->get_link()) > 0 && strlen($enclosure->get_type()) > 0){
+									if(stristr($enclosure->get_type(),"audio")){
+									$content .= "<p><audio controls><source src=\"".$enclosure->get_link()."\" type=\"".$enclosure->get_type()."\" autoplay=\"false\" preload=\"none\"></audio> - <a href=\"".$enclosure->get_link()."\">LINK</a></p>";
+									}else if(stristr($enclosure->get_type(),"video")){
+									$content .= "<p><video controls><source src=\"".$enclosure->get_link()."\" type=\"".$enclosure->get_type()."\" autoplay=\"false\" preload=\"none\"></video> - <a href=\"".$enclosure->get_link()."\">LINK</a></p>";
+									}else{
 									$content .= "<p><embed src=\"".$enclosure->get_link()."\" type=\"".$enclosure->get_type()."\" autoplay=\"false\" preload=\"none\"> - <a href=\"".$enclosure->get_link()."\">LINK</a></p>";
+									}
 								}
 							}
-						add_whisper($item->get_permalink(),$item->get_title(),$content,$item->get_feed()->get_title(),$item->get_feed()->get_link(),$item->get_date("U"),$bookmark->link_image);
+						add_whisper($item->get_permalink(),$item->get_title(),$content,$bookmark->link_name,$item->get_feed()->get_link(),$item->get_date("U"),$bookmark->link_image);
 					}catch(Exception $e){
 						whisperfollow_log("Exception occured: ".$e->getMessage());
 					}
