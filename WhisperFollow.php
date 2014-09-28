@@ -339,7 +339,7 @@ function whisperfollow_subscribe_to_push($feed,$hub){
 		whisperfollow_log( "subscribing to PUSH for instant notification!<br/>Feed: ".$feed."<br/>hub: ".$hub);
 	$o = get_option('whisperfollow_pushsubs');
 	if($o == false){$o = array();}else{$o = explode("|",$o);}
-	
+	$subscribed = array();
 	if(strlen($feed)>0){
 		if(!in_array($feed,$subscribed)){
 			if(whisperfollow_pubsub_change_subscription("subscribe",$feed,$hub)){
@@ -348,6 +348,7 @@ function whisperfollow_subscribe_to_push($feed,$hub){
 			}
 		}
 	}
+
 	update_option( 'whisperfollow_pushsubs', implode("|",$subscribed));
 }
 

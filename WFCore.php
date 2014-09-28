@@ -1,9 +1,9 @@
 <?php
 	require_once 'BarnabyWalters/Mf2/Functions.php';
-	if(!class_exists ("Mf2",false)){
+	if(!function_exists ("Mf2\parse")){
 		require_once 'Mf2/Parser.php';
 	}
-      	use Mf2;
+      	use Mf2 as Mf2;
 	
 	  use BarnabyWalters\Mf2 as BWMF2;
 	function curldo($url){
@@ -20,6 +20,9 @@
 		$dom->loadXML($fulltext);
 		$image = $dom->getElementsByTagName('image');
 			$image = $image->item(0);
+			if($image == null){
+				return "";
+			}
 			$url = $image->getElementsByTagName('url');
 			if($url->length >0){
 				foreach ($url as $item) {
@@ -38,7 +41,7 @@
 
 	function html_titleget($fulltext){
 		$dom = new DOMDocument();
-		@$dom->loadHTML($fulltext);
+		$dom->loadHTML($fulltext);
 		$head = $dom->getElementsByTagName('head');
 		if(!$head->length >0){
 			return "";
