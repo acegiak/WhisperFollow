@@ -9,6 +9,7 @@ use DOMNode;
 use DOMNodeList;
 use Exception;
 use SplObjectStorage;
+use stdClass;
 
 /**
  * Parse Microformats2
@@ -43,6 +44,41 @@ use SplObjectStorage;
 function parse($input, $url = null, $convertClassic = true) {
 	$parser = new Parser($input, $url);
 	return $parser->parse($convertClassic);
+}
+
+/**
+ * Fetch microformats2
+ *
+ * Given a URL, fetches it (following up to 5 redirects) and, if the content-type appears to be HTML, returns the parsed
+ * microformats2 array structure.
+ *
+ * Not that even if the response code was a 4XX or 5XX error, if the content-type is HTML-like then it will be parsed
+ * all the same, as there are legitimate cases where error pages might contain useful microformats (for example a deleted
+ * h-entry resulting in a 410 Gone page with a stub h-entry explaining the reason for deletion). Look in $curlInfo['http_code']
+ * for the actual value.
+ *
+ * @param string $url The URL to fetch
+ * @param bool $convertClassic (optional, default true) whether or not to convert classic microformats
+ * @param &array $curlInfo (optional) the results of curl_getinfo will be placed in this variable for debugging
+ * @return array|null canonical microformats2 array structure on success, null on failure
+ */
+function fetch($url, $convertClassic = true, &$curlInfo=null) {
+	$ch = curl_init();
+	curl_setopt($ch, CURLOPT_URL, $url);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+	curl_setopt($ch, CURLOPT_HEADER, 0);
+	curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+	curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+	$html = curl_exec($ch);
+	$info = $curlInfo = curl_getinfo($ch);
+	curl_close($ch);
+
+	if (strpos(strtolower($info['content_type']), 'html') === false) {
+		// The content was not delivered as HTML, do not attempt to parse it.
+		return null;
+	}
+
+	return parse($html, $url, $convertClassic);
 }
 
 /**
@@ -85,12 +121,15 @@ function unicodeTrim($str) {
  * @param string $prefix The prefix to look for
  * @return string|array The prefixed name of the first microfomats class found or false
  */
-function mfNamesFromClass($class, $prefix = 'h-') {
+function mfNamesFromClass($class, $prefix='h-') {
+	$class = str_replace(array(' ', '	', "\n"), ' ', $class);
 	$classes = explode(' ', $class);
 	$matches = array();
 
 	foreach ($classes as $classname) {
-		if (stristr(' ' . $classname, ' ' . $prefix) !== false) {
+		$compare_classname = strtolower(' ' . $classname);
+		$compare_prefix = strtolower(' ' . $prefix);
+		if (stristr($compare_classname, $compare_prefix) !== false && ($compare_classname != $compare_prefix)) {
 			$matches[] = ($prefix === 'h-') ? $classname : substr($classname, strlen($prefix));
 		}
 	}
@@ -105,19 +144,23 @@ function mfNamesFromClass($class, $prefix = 'h-') {
  * space-separated string.
  * 
  * @param string $class
- * @return string|null
+ * @return array
  */
 function nestedMfPropertyNamesFromClass($class) {
-	$prefixes = array(' p-', ' u-', ' dt-', ' e-');
+	$prefixes = array('p-', 'u-', 'dt-', 'e-');
+	$propertyNames = array();
 
+	$class = str_replace(array(' ', '	', "\n"), ' ', $class);
 	foreach (explode(' ', $class) as $classname) {
 		foreach ($prefixes as $prefix) {
-			if (stristr(' ' . $classname, $prefix))
-				return mfNamesFromClass($classname, ltrim($prefix));
+			$compare_classname = strtolower(' ' . $classname);
+			if (stristr($compare_classname, $prefix) && ($compare_classname != $prefix)) {
+				$propertyNames = array_merge($propertyNames, mfNamesFromClass($classname, ltrim($prefix)));
+			}
 		}
 	}
 
-	return null;
+	return $propertyNames;
 }
 
 /**
@@ -138,6 +181,50 @@ function mfNamesFromElement(\DOMElement $e, $prefix = 'h-') {
 function nestedMfPropertyNamesFromElement(\DOMElement $e) {
 	$class = $e->getAttribute('class');
 	return nestedMfPropertyNamesFromClass($class);
+}
+
+/**
+ * Converts various time formats to HH:MM
+ * @param string $time The time to convert
+ * @return string
+ */
+function convertTimeFormat($time) {
+	$hh = $mm = $ss = '';
+	preg_match('/(\d{1,2}):?(\d{2})?:?(\d{2})?(a\.?m\.?|p\.?m\.?)?/i', $time, $matches);
+
+	// if no am/pm specified
+	if (empty($matches[4])) {
+		return $time;
+	}
+	// else am/pm specified
+	else {
+		$meridiem = strtolower(str_replace('.', '', $matches[4]));
+
+		// hours
+		$hh = $matches[1];
+
+		// add 12 to the pm hours
+		if ($meridiem == 'pm' && ($hh < 12)) {
+			$hh += 12;
+		}
+
+		$hh = str_pad($hh, 2, '0', STR_PAD_LEFT);
+
+		// minutes
+		$mm = (empty($matches[2]) ) ? '00' : $matches[2];
+
+		// seconds, only if supplied
+		if (!empty($matches[3])) {
+			$ss = $matches[3];
+		}
+
+		if (empty($ss)) {
+			return sprintf('%s:%s', $hh, $mm);
+		}
+		else {
+			return sprintf('%s:%s:%s', $hh, $mm, $ss);
+		}
+	}
 }
 
 /**
@@ -163,14 +250,17 @@ class Parser {
 	
 	/** @var SplObjectStorage */
 	protected $parsed;
+	
+	public $jsonMode;
 
 	/**
 	 * Constructor
 	 * 
 	 * @param DOMDocument|string $input The data to parse. A string of HTML or a DOMDocument
 	 * @param string $url The URL of the parsed document, for relative URL resolution
+	 * @param boolean $jsonMode Whether or not to use a stdClass instance for an empty `rels` dictionary. This breaks PHP looping over rels, but allows the output to be correctly serialized as JSON.
 	 */
-	public function __construct($input, $url = null) {
+	public function __construct($input, $url = null, $jsonMode = false) {
 		libxml_use_internal_errors(true);
 		if (is_string($input)) {
 			$doc = new DOMDocument();
@@ -201,10 +291,16 @@ class Parser {
 			}
 			break;
 		}
+
+		// Ignore <template> elements as per the HTML5 spec
+		foreach ($this->xpath->query('//template') as $templateEl) {
+			$templateEl->parentNode->removeChild($templateEl);
+		}
 		
 		$this->baseurl = $baseurl;
 		$this->doc = $doc;
 		$this->parsed = new SplObjectStorage();
+		$this->jsonMode = $jsonMode;
 	}
 	
 	private function elementPrefixParsed(\DOMElement $e, $prefix) {
@@ -227,7 +323,33 @@ class Parser {
 		
 		return true;
 	}
-	
+
+	private function resolveChildUrls(DOMElement $el) {
+		$hyperlinkChildren = $this->xpath->query('.//*[@src or @href or @data]', $el);
+
+		foreach ($hyperlinkChildren as $child) {
+			if ($child->hasAttribute('href'))
+				$child->setAttribute('href', $this->resolveUrl($child->getAttribute('href')));
+			if ($child->hasAttribute('src'))
+				$child->setAttribute('src', $this->resolveUrl($child->getAttribute('src')));
+			if ($child->hasAttribute('data'))
+				$child->setAttribute('data', $this->resolveUrl($child->getAttribute('data')));
+		}
+	}
+
+	public function textContent(DOMElement $el) {
+		$this->resolveChildUrls($el);
+
+		$clonedEl = $el->cloneNode(true);
+
+		foreach ($this->xpath->query('.//img', $clonedEl) as $imgEl) {
+			$newNode = $this->doc->createTextNode($imgEl->getAttribute($imgEl->hasAttribute('alt') ? 'alt' : 'src'));
+			$imgEl->parentNode->replaceChild($newNode, $imgEl);
+		}
+
+		return $clonedEl->textContent;
+	}
+
 	// TODO: figure out if this has problems with sms: and geo: URLs
 	public function resolveUrl($url) {
 		// If the URL is seriously malformed it’s probably beyond the scope of this 
@@ -261,7 +383,7 @@ class Parser {
 			// Process value-class stuff
 			$val = '';
 			foreach ($valueClassElements as $el) {
-				$val .= $el->textContent;
+				$val .= $this->textContent($el);
 			}
 			
 			return unicodeTrim($val);
@@ -305,7 +427,7 @@ class Parser {
 		} elseif (in_array($p->tagName, array('data', 'input')) and $p->getAttribute('value') !== '') {
 			$pValue = $p->getAttribute('value');
 		} else {
-			$pValue = unicodeTrim($p->textContent);
+			$pValue = unicodeTrim($this->textContent($p));
 		}
 		
 		return $pValue;
@@ -340,7 +462,7 @@ class Parser {
 		} elseif (in_array($u->tagName, array('data', 'input')) and $u->getAttribute('value') !== null) {
 			return $u->getAttribute('value');
 		} else {
-			return unicodeTrim($u->textContent);
+			return unicodeTrim($this->textContent($u));
 		}
 	}
 
@@ -348,9 +470,10 @@ class Parser {
 	 * Given an element with class="dt-*", get the value of the datetime as a php date object
 	 * 
 	 * @param DOMElement $dt The element to parse
+	 * @param array $dates Array of dates processed so far
 	 * @return string The datetime string found
 	 */
-	public function parseDT(\DOMElement $dt) {
+	public function parseDT(\DOMElement $dt, &$dates = array()) {
 		// Check for value-class pattern
 		$valueClassChildren = $this->xpath->query('./*[contains(concat(" ", @class, " "), " value ") or contains(concat(" ", @class, " "), " value-title ")]', $dt);
 		$dtValue = false;
@@ -401,19 +524,35 @@ class Parser {
 			foreach ($dateParts as $part) {
 				// Is this part a full ISO8601 datetime?
 				if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z?[+|-]\d{2}:?\d{2})?$/', $part)) {
-					// Break completely, we’ve got our value
+					// Break completely, we’ve got our value.
 					$dtValue = $part;
 					break;
 				} else {
-					// Is the current part a valid time(+TZ?) AND no other time reprentation has been found?
+					// Is the current part a valid time(+TZ?) AND no other time representation has been found?
 					if ((preg_match('/\d{1,2}:\d{1,2}(Z?[+|-]\d{2}:?\d{2})?/', $part) or preg_match('/\d{1,2}[a|p]m/', $part)) and empty($timePart)) {
 						$timePart = $part;
 					} elseif (preg_match('/\d{4}-\d{2}-\d{2}/', $part) and empty($datePart)) {
-						// Is the current part a valid date AND no other date reprentation has been found?
+						// Is the current part a valid date AND no other date representation has been found?
 						$datePart = $part;
 					}
-					
-					$dtValue = rtrim($datePart, 'T') . 'T' . unicodeTrim($timePart, 'T');
+
+					if ( !empty($datePart) && !in_array($datePart, $dates) ) {
+						$dates[] = $datePart;
+					}
+
+					$dtValue = '';
+
+					if ( empty($datePart) && !empty($timePart) ) {
+						$timePart = convertTimeFormat($timePart);
+						$dtValue = unicodeTrim($timePart, 'T');
+					}
+					else if ( !empty($datePart) && empty($timePart) ) {
+						$dtValue = rtrim($datePart, 'T');
+					}
+					else {
+						$timePart = convertTimeFormat($timePart);
+						$dtValue = rtrim($datePart, 'T') . 'T' . unicodeTrim($timePart, 'T');
+					}
 				}
 			}
 		} else {
@@ -451,6 +590,19 @@ class Parser {
 			} else {
 				$dtValue = $dt->nodeValue;
 			}
+
+			if ( preg_match('/(\d{4}-\d{2}-\d{2})/', $dtValue, $matches) ) {
+				$dates[] = $matches[0];
+			}
+		}
+
+		/**
+		 * if $dtValue is only a time and there are recently parsed dates, 
+		 * form the full date-time using the most recnetly parsed dt- value
+		 */
+		if ( (preg_match('/^\d{1,2}:\d{1,2}(Z?[+|-]\d{2}:?\d{2})?/', $dtValue) or preg_match('/^\d{1,2}[a|p]m/', $dtValue)) && !empty($dates) ) {
+			$dtValue = convertTimeFormat($dtValue);
+			$dtValue = end($dates) . 'T' . unicodeTrim($dtValue, 'T');
 		}
 
 		return $dtValue;
@@ -472,17 +624,8 @@ class Parser {
 		
 		// Expand relative URLs within children of this element
 		// TODO: as it is this is not relative to only children, make this .// and rerun tests
-		$hyperlinkChildren = $this->xpath->query('//*[@src or @href or @data]', $e);
-		
-		foreach ($hyperlinkChildren as $child) {
-			if ($child->hasAttribute('href'))
-				$child->setAttribute('href', $this->resolveUrl($child->getAttribute('href')));
-			if ($child->hasAttribute('src'))
-				$child->setAttribute('src', $this->resolveUrl($child->getAttribute('src')));
-			if ($child->hasAttribute('data'))
-				$child->setAttribute('data', $this->resolveUrl($child->getAttribute('data')));
-		}
-		
+		$this->resolveChildUrls($e);
+
 		$html = '';
 		foreach ($e->childNodes as $node) {
 			$html .= $node->C14N();
@@ -490,7 +633,7 @@ class Parser {
 		
 		return array(
 			'html' => $html,
-			'value' => unicodeTrim($e->textContent)
+			'value' => unicodeTrim($this->textContent($e))
 		);
 	}
 
@@ -511,6 +654,7 @@ class Parser {
 		// Initalise var to store the representation in
 		$return = array();
 		$children = array();
+		$dates = array();
 
 		// Handle nested microformats (h-*)
 		foreach ($this->xpath->query('.//*[contains(concat(" ", @class)," h-")]', $e) as $subMF) {
@@ -583,7 +727,7 @@ class Parser {
 			if ($this->isElementParsed($dt, 'dt'))
 				continue;
 			
-			$dtValue = $this->parseDT($dt);
+			$dtValue = $this->parseDT($dt, $dates);
 			
 			if ($dtValue) {
 				// Add the value to the array for dt- properties
@@ -694,6 +838,14 @@ class Parser {
 		return $parsed;
 	}
 	
+	/**
+	 * Parse Rels and Alternatives
+	 * 
+	 * Returns [$rels, $alternatives]. If the $rels value is to be empty, i.e. there are no links on the page 
+	 * with a rel value *not* containing `alternate`, then the type of $rels depends on $this->jsonMode. If set
+	 * to true, it will be a stdClass instance, optimising for JSON serialisation. Otherwise (the default case),
+	 * it will be an empty array.
+	 */
 	public function parseRelsAndAlternates() {
 		$rels = array();
 		$alternates = array();
@@ -729,8 +881,9 @@ class Parser {
 			}
 		}
 		
-		if (count($rels) === 0)
-			$rels = new \stdclass;
+		if (empty($rels) and $this->jsonMode) {
+			$rels = new stdClass();
+		}
 		
 		return array($rels, $alternates);
 	}
@@ -861,7 +1014,8 @@ class Parser {
 		'hrecipe' => 'h-recipe',
 		'hresume' => 'h-resume',
 		'hevent' => 'h-event',
-		'hreview' => 'h-review'
+		'hreview' => 'h-review',
+		'hproduct' => 'h-product'
 	);
 	
 	public $classicPropertyMap = array(
@@ -953,6 +1107,17 @@ class Parser {
 			'best' => 'p-best',
 			'worst' => 'p-worst',
 			'description' => 'p-description'
+		),
+		'hproduct' => array(
+			'fn' => 'p-name',
+			'photo' => 'u-photo',
+			'brand' => 'p-brand',
+			'category' => 'p-category',
+			'description' => 'p-description',
+			'identifier' => 'u-identifier',
+			'url' => 'u-url',
+			'review' => 'p-review h-review',
+			'price' => 'p-price'
 		)
 	);
 }
@@ -979,6 +1144,8 @@ function parseUriToComponents($uri) {
 		if(array_key_exists('user', $u) || array_key_exists('pass', $u))
 			$result['authority'] .= '@';
 		$result['authority'] .= $u['host'];
+		if(array_key_exists('port', $u))
+			$result['authority'] .= ':' . $u['port'];
 	}
 
 	if(array_key_exists('path', $u))

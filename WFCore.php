@@ -235,29 +235,33 @@
 
 
 		function whisperfollow_mf2_read($bookmark){
-			$page = $bookmark->link_rss;
+			$page = $bookmark->link_url;
 			whisperfollow_log("<br/>MF2 Parsing ".$page."<br/>");
+
+			//error_log("MF2 Parsing ".$page);
 			try{
 				$output = MF2\parse(curldo($page),$page);
+				//error_log(print_r($output,true));
 				
 				$feeditem = BWMF2\findMicroformatsByType($output,'h-feed',true);
 				$children = BWMF2\findMicroformatsByType($output,'h-entry',true);
 
 				foreach($children as $child){
-				
-					//whisperfollow_log("<br/>".print_r($child,true)."<br/>");
 						$citation = $child['properties']['in-reply-to'][0];
 						$content = $child['properties']['content'][0]['html'];
 						if(isset($citation['properties']['content'][0])){
 							$content = '<div class="p-in-reply-to h-cite"><blockquote class="p-content">'.$citation['properties']['content'][0].'</blockquote>Reblogged from <a href="'.$citation['properties']['url'][0].'" class="u-url">'.$citation['properties']['name'][0].'</div>'.$content;
 						}
-						whisperfollow_log("<br/>got ".$child['properties']['name'][0]." from ".$feeditem['properties']['title']?:$page."<br/>");
+						whisperfollow_log("<br/>got ".$child['properties']['name'][0]." from ".$bookmark->link_name."<br/>");
+						//error_log("MF2: got ".$child['properties']['name'][0]." from ".$bookmark->link_name."");
+
 						add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$bookmark->link_name,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])),$bookmark->link_image);
 					
 					
 				}
 			}catch(Exception $e){
 				whisperfollow_log("Exception occured: ".$e->getMessage());
+				//error_log("MF2 parsing Exception occured: ".$e->getMessage());
 			}
 				
 		}
