@@ -10,6 +10,7 @@
 		$curl_handle=curl_init();
 		curl_setopt($curl_handle,CURLOPT_URL,$url);
 		curl_setopt($curl_handle,CURLOPT_RETURNTRANSFER,1);
+		curl_setopt($curl_handle, CURLOPT_FOLLOWLOCATION, true);
 		$buffer = curl_exec($curl_handle);
 		curl_close($curl_handle);
 		return $buffer;
@@ -240,8 +241,10 @@
 
 			//error_log("MF2 Parsing ".$page);
 			try{
-				$output = MF2\parse(curldo($page),$page);
-				//error_log(print_r($output,true));
+				$mfhtml = curldo($page);
+				//error_log("MF2HTML".$page.": ".print_r($mfhtml,true));
+				$output = MF2\parse($mfhtml,$page);
+				//error_log("MF2".$page.": ".preg_replace("`\s+`"," ",print_r($output,true)));
 				
 				$feeditem = BWMF2\findMicroformatsByType($output,'h-feed',true);
 				$children = BWMF2\findMicroformatsByType($output,'h-entry',true);

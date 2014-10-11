@@ -717,6 +717,21 @@ function newfollow(){
 					}
 		$.ajax(options);
 }
+function htmlEncode(value){
+  //create a in-memory div, set it's inner text(which jQuery automatically encodes)
+  //then grab the encoded contents back out.  The div never exists on the page.
+  return $('<div/>').text(value).html();
+}
+
+function htmlDecode(value){
+  return $('<div/>').html(value).text();
+}
+function safety(instr){
+	var mini = $('<div>'+instr+"</div>");
+	$('script',mini).wrapAll('<div class="scriptescaper scriptescaped">');
+	$('div.scriptescaper',mini).html(function(){var v = htmlEncode($(this).html());console.log(v); return v;});
+	return mini.html();
+}
 
 function dothething(){
         if(typeof window.whispersloading === "undefined" || window.whispersloading == false){
@@ -743,7 +758,7 @@ function dothething(){
            var tempmax = 0;
            $.each( data, function( key, val ) {
              if(window.listedwhispers.indexOf(val.permalink) < 0){
-                 $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+val.content+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a><span class='whispertime'>"+val.time+"</span></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
+                 $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+safety(val.content)+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a><span class='whispertime'>"+val.time+"</span></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
 		console.log("id check:"+val.id.toString());
                  if(val.id > tempmax){
                      tempmax = val.id;
@@ -758,9 +773,13 @@ function dothething(){
            }
            window.whispersloading = false;
            $("#wfdnext").val("load more");
+
+		
+	$("div.scriptescaper").dblclick(function(){$(this).removeClass("scriptescaped");$(this).addClass("scriptunescaped");$(this).html(function(){return $("<div/>").html($(this).html()).text();});});
         });
     }
-    }
+
+}
 win = $(window),
 doc = $(document);
 doc.ready(function(){
