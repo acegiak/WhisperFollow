@@ -388,6 +388,10 @@ function whisperfollow_page($items){
 	global $wpdb;
 	$fpage=0;
 	$length = 15;
+if ( !wp_next_scheduled( 'whisperfollow_generate_hook' ) ) {            
+		wp_schedule_event( time(), 'fivemins', 'whisperfollow_generate_hook' );
+	}
+
 	if (isset($wp_query->query_vars['followpage']))	{
 		echo "followpage: ";
 		$pagenum = (string)$wp_query->query_vars['followpage'];
@@ -829,8 +833,10 @@ function reblog(id){
 	var whispertitle = $("#whisper"+id+" .whisperauthor").text()+": "+$("#whisper"+id+" .whispertitle").text();
         $("#title",window.reblogchild.document).val(whispertitle);
         $("#response_title",window.reblogchild.document).val(whispertitle.substring(0, 125)+(whispertitle.length > 125?"...":""));
-        $("#response_quote",window.reblogchild.document).val($("#whisper"+id+" .whispercontent").html());
+        $("#response_content",window.reblogchild.document).val($("#whisper"+id+" .whispercontent").html());
         $("#response_url",window.reblogchild.document).val($("#whisper"+id+" .whisperpermalink").attr("href"));
+        $("#response_author",window.reblogchild.document).val($("#whisper"+id+" .whisperauthor").text());
+        $("#response_icon",window.reblogchild.document).val($("#whisper"+id+" .whisperauthorav").attr("src"));
         $("#kindchecklist li label:contains('Repost') input",window.reblogchild.document).prop('checked', true);
         $("#categorychecklist li label:contains('whispers') input",window.reblogchild.document).prop('checked', true);
         $("#post-format-aside",window.reblogchild.document).prop('checked', true);
