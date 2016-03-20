@@ -3,7 +3,7 @@
     Plugin Name: WhisperFollow
     Plugin URI: http://acegiak.machinespirit.net/2012/01/25/whisperfollow/
     Description: Follow and reblog multiple sites with simplepie RSS
-    Version: 1.3.0
+    Version: 2.0.0
     Author: Ashton McAllan
     Author URI: http://acegiak.machinespirit.net
     License: GPLv2
@@ -26,25 +26,20 @@
 /*
  MF2 Parser by Barnaby Walters: https://github.com/indieweb/php-mf2
 */
-	require_once('WFCore.php');
+
+//namespace WhisperFollow;
+
+require  plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
+require_once (ABSPATH . WPINC . '/class-feed.php');
+
+
+use BarnabyWalters\Mf2  as BWMF2;;
 
 
     global $whisperfollow_db_version;
 $whisperfollow_db_version = "1.0";
 
-
-function whisperfollow_feed_time() { return 300; }
-
-function whisperfollow_cron_definer($schedules){
-
-	$schedules['fivemins'] = array(
-		'interval'=> 300,
-		'display'=>  __('Once Every 5 Minutes')
-	);
-
-	return $schedules;
-}
-
+$bookmarkLibrary = array();
 
 function date_sort($a,$b) {
 			$ad = (int)$a->get_date('U');
@@ -54,7 +49,31 @@ function date_sort($a,$b) {
     }
     return ($ad > $bd) ? -1 : 1;
 }
-    
+
+function whisperfollow_log($message,$verbose=true){
+	error_log($message);
+	return $message;
+
+	include_once( ABSPATH . 'wp-admin/includes/plugin.php' );
+	if($verbose && is_plugin_active('whisperfollow/WhisperFollow.php')){
+		echo "<p>".$message."</p>";
+	}
+	$o = get_option('whisperfollow_log');
+	if($o == false){
+		$log = "";
+	}else{
+		$log = "|".((string)$o);
+	}
+	$log = ((string)date('r')).": ".(string)$message.$log;
+	update_option('whisperfollow_log',substr($log,0,100000));
+	return message;
+}
+
+register_activation_hook( __FILE__, 'whisperfollow_install' );
+register_activation_hook(__FILE__,'whisperfollow_createtable');
+register_activation_hook(__FILE__,'whisperfollow_installdata');
+
+register_deactivation_hook( __FILE__, 'whisperfollow_deactivate' );
 
 function whisperfollow_createtable() {
 	global $wpdb;
@@ -97,40 +116,6 @@ function whisperfollow_update_db_check() {
 }
 
 
-function add_whisper($permalink,$title,$content,$authorname='',$authorurl='',$time=0,$avurl=''){
-	whisperfollow_log("adding whisper: ".$permalink.": ".$title);
-	global $wpdb;
-	if($time < 1){
-		$time = time();
-	}
-	$table_name = $wpdb->prefix . "whisperfollow";
-	if($wpdb->get_var( "SELECT COUNT(*) FROM ".$table_name." WHERE permalink LIKE \"".$permalink."\";")<1){
-		whisperfollow_log("no duplicate found");
-		$rows_affected = $wpdb->insert( $table_name,
-			array(
-				'permalink' => $permalink,
-				'title' => $title,
-				'content' => $content,
-				'authorname' => $authorname,
-				'authorurl' => $authorurl,
-				'time' => date( 'Y-m-d H:i:s', $time),
-				'authoravurl' => $avurl,
-				'viewed' =>false,
-			 ) );
-
-		if($rows_affected == false){
-		
-			whisperfollow_log("could not insert whisper into database!");
-			die("could not insert whisper into database!");
-		}else{
-			whisperfollow_log("added ".$title." from ".$authorurl);
-		}
-	}else{
-		whisperfollow_log("duplicate detected");
-	}
-
-}
-
 function whisperfollow_install() {
 	// Activates the plugin and checks for compatible version of WordPress 
 	if ( version_compare( get_bloginfo( 'version' ), '2.9', '<' ) ) {
@@ -138,9 +123,7 @@ function whisperfollow_install() {
 		wp_die( "This plugin requires WordPress version 2.9 or higher." );
 	}
 
-	if ( !wp_next_scheduled( 'whisperfollow_generate_hook' ) ) {            
-		wp_schedule_event( time(), 'fivemins', 'whisperfollow_generate_hook' );
-	}
+
 	$isthereacat = false;
 	foreach (get_categories() as $category){
 		if($category->name == "whispers"){
@@ -155,7 +138,6 @@ function whisperfollow_install() {
 	}
 
 	createthefollowpage();
-	flush_rewrite_rules( false );
 }
     
 
@@ -186,176 +168,148 @@ function createthefollowpage(){
 			wp_die("Could not create the followpage");
 		
 	}else{
-		wp_die("followpage already exists");
+		whisperfollow_log("followpage already exists, check it contains the shortcode");
 	}
 }
 
-function wf_publish_post($post_id) {
-global $wpdb;
+function whisperfollow_curlthings($urls){
+	$ret = "";
+	// We will download info about 2 YouTube videos:
+	// http://youtu.be/XmSdTa9kaiQ and
+	// http://youtu.be/6dC-sm5SWiU
 
-$post = get_post($post_id);
+	// Init queue of requests
+	$queue = new \cURL\RequestsQueue;
+	// Set default options for all requests in queue
+	$queue->getDefaultOptions()
+	    ->set(CURLOPT_TIMEOUT, 5)
+	    ->set(CURLOPT_RETURNTRANSFER, true);
+	// Set function to be executed when request will be completed
+	$queue->addListener('complete', function (\cURL\Event $event) {
+		whisperfollow_handleCurlComplete($event);
+	});
 
-if ( empty($post) )
-return;
-
-if ( 'publish' == $post->post_status )
-return;
-
-$old_status = $post->post_status;
-$post->post_status = 'publish';
-
-wp_update_post($post);
-
-//wp_transition_post_status('publish', $old_status, $post);
-
-//do_action('edit_post', $post_id, $post);
-//do_action('save_post', $post_id, $post);
-//do_action('wp_insert_post', $post_id, $post);
-}
-
-function createthereblog($ftitle,$fcontent,$fcontext,$ftarget, $ftitle, $flike){
-	$cat = get_term_by('name', 'whispers', 'category');
-	if($cat){
-		$cats = array($cat->term_id);
-	}else{
-		$cats= array();
-	}
-	$post = array(
-		'post_author' => $user_ID, //The user ID number of the author.
-		'post_content' => $fcontent, //The full text of the post.
-		'post_title' => $ftitle, //The title of your post.
-		'post_status' => 'draft',
-		'post_type' => 'post', //You may want to insert a regular post, page, link, a menu item or some custom post type
-		'post_category' => $cats
-	); 
-	$postid = wp_insert_post( $post, $wp_error );
-	set_post_format($postid,"aside");
-	update_post_meta($postid,"context",urldecode($fcontext));
-	update_post_meta($postid,"contextTarget",urldecode($ftarget));
-	update_post_meta($postid,"contextTitle",urldecode($ftitle));
-	update_post_meta($postid,"contextLike",$flike);
-	wf_publish_post( $postid);
-	//do_action('publish_post',$postid);
-
-	whisperfollow_log("<br>sending webmention: ".get_permalink($postid)." : ".urldecode($ftarget)."<br>");
-	do_action('send_webmention', get_permalink($postid), urldecode($ftarget));
-	//echo "<p>Created post \"".$ftitle."\"</p>";
-}
-    
-function convertAttributeWhitespace($matches){
-	return '="'.str_replace(' ','%20',$matches[1]).'"';
-}
-
-	
-//START PAGINATION VARIABLES
-
-function whisperfollow_add_rewrite_rules( $wp_rewrite ) 
-{
-  $new_rules = array( 
-     $wp_rewrite->root.'(following)/(\w*)$' => 'index.php?pagename='.
-       $wp_rewrite->preg_index(1).'&followpage='.
-       $wp_rewrite->preg_index(2),
-	 $wp_rewrite->root.'(following)$' => 'index.php?pagename='.
-       $wp_rewrite->preg_index(1));
-
-  $wp_rewrite->rules = $new_rules + $wp_rewrite->rules;
-}
-
-
-function following_queryvars( $qvars )
-{
-	$qvars[] = 'followpage';
-	return $qvars;
-}
- 
-    
-function whisperfollow_shortcode( $atts ) {    
-	if ( !empty ($atts) ) {
-		foreach ( $atts as $key => &$val ) {
-			$val = html_entity_decode($val);
-		}
-	}
-	whisperfollow_page( $atts );       
-}
-
-function whisperfollow_newfollow($examineurl){
-	require_once('wp-admin/includes/bookmark.php');
-	$linkdata = WFCore_newfollow($examineurl);
-	
-	$link_id = wp_insert_link( $linkdata );
-
+	foreach($urls as $url){
+		$request = new \cURL\Request($url);
 		
-		if($link_id <1){
-			echo "there was a problem adding the link";
-		}else{
-			echo "subscribed to ".$linkdata['link_name']."!";
-		}
-}
-
-
-
-//BEGIN PUBSUBHUBBUB
-function whisperfollow_pubsub_parse_request($wp) {
-    if (array_key_exists('wfpushend', $wp->query_vars) ){
-			if( array_key_exists('hub_challenge', $wp->query_vars)){
-				header('HTTP/1.1 200 OK', null, 200);
-				echo $wp->query_vars['hub_challenge'];
-				whisperfollow_log("hub challenge: ".$wp->query_vars['hub_challenge'],false);
-				exit();
-			}else{
-				whisperfollow_log("Recieved PUSH update!");
-				$body = @file_get_contents('php://input');
-				$self = rss_selfget($body);
-				$hub = rss_hubget($body);
-				if(strlen($self) > 0){
-					whisperfollow_log("PUSH START: ".substr($self,0,50));
-					if(!in_array($self,array_map(create_function('$o', 'return $o->link_rss;'),get_bookmarks( array(	'orderby' => 'name','order'=> 'ASC','category_name'  => 'Blogroll'))))){
-						whisperfollow_pubsub_change_subscription("unsubscribe",$self,$hub);
-					}else{
-						whisperfollow_aggregate($body,true);
-					}
-				}else{
-					whisperfollow_log("PUSH notice without SELF:<br/>".$body,false);
-				}
-				
-				exit();
-			}
-    }
-}
-add_action('parse_request', 'whisperfollow_pubsub_parse_request');
-
-
-function whisperfollow_pubsub_query_vars($vars) {
-    $vars[] = 'wfpushend';
-	$vars[] = 'hub.challenge';
-    return $vars;
-}
-add_filter('query_vars', 'whisperfollow_pubsub_query_vars');
-
-
-
-	
-function whisperfollow_subscribe_to_push($feed,$hub){
-		whisperfollow_log( "subscribing to PUSH for instant notification!<br/>Feed: ".$feed."<br/>hub: ".$hub);
-	$o = get_option('whisperfollow_pushsubs');
-	if($o == false){$o = array();}else{$o = explode("|",$o);}
-	$subscribed = array();
-	if(strlen($feed)>0){
-		if(!in_array($feed,$subscribed)){
-			if(whisperfollow_pubsub_change_subscription("subscribe",$feed,$hub)){
-				$subscribed[] = $feed;
-				whisperfollow_log("PUSH subscribed to \"".$feed."\"");
-			}
-		}
+		$queue->attach($request);
 	}
 
-	update_option( 'whisperfollow_pushsubs', implode("|",$subscribed));
+
+	// Execute queue
+	while ($queue->socketPerform()) {
+	    //echo  '*';
+	    $queue->socketSelect();
+	}
+	return $ret;
 }
 
-//END PUBSUB HUBBBUB
+function whisperfollow_handleCurlComplete($event){
+	global $bookmarkLibrary;
+	$response = $event->response;
+	//$json = $response->getContent(); // Returns content of response
+	//$feed = json_decode($json, true);
+	//error_log("CURLRESPONSE:".print_r($response,true) . "\n");
+
+	$data = array_values($event->request->getOptions()->toArray());
+	//error_log("CURL COMPLETE:".print_r($data[0],true));
+
+	$bookmark = $bookmarkLibrary[$data[0]];
+	if(strlen($bookmark->link_rss)>0){
+		whisperfollow_handleRSSATOM($response->getContent(),$bookmark);
+	}else{
+		whisperfollow_handleMF2($response->getContent(),$bookmark);
+	}
+}
+
+function whisperfollow_handleMF2($feedcontent,$bookmark){
+	$page = $bookmark->link_url;
+	whisperfollow_log("<br/>MF2 Parsing ".$page."<br/>");
+
+	//error_log("MF2 Parsing ".$page);
+	try{
+		//$mfhtml = curldo($page);
+		//error_log("MF2HTML".$page.": ".print_r($mfhtml,true));
+		$output = MF2\parse($feedcontent,$page);
+		//error_log("MF2".$page.": ".preg_replace("`\s+`"," ",print_r($output,true)));
+		
+		$feeditem = BWMF2\findMicroformatsByType($output,'h-feed',true);
+		$children = BWMF2\findMicroformatsByType($output,'h-entry',true);
+
+		foreach($children as $child){
+				$citation = $child['properties']['in-reply-to'][0];
+				$content = $child['properties']['content'][0]['html'];
+				if(isset($citation['properties']) && isset($citation['properties']['content'])){
+					if(is_array($citation['properties']['content'])){
+						$content = '<div class="p-in-reply-to h-cite"><blockquote class="p-content">'.$citation['properties']['content'][0]['html'].'</blockquote>Reblogged from <a href="'.$citation['properties']['url'][0].'" class="u-url">'.$citation['properties']['name'][0].'</div>'.$content;
+					}
+				}
+				whisperfollow_log("<br/>got ".$child['properties']['name'][0]." from ".$bookmark->link_name."<br/>");
+				//error_log("MF2: got ".$child['properties']['name'][0]." from ".$bookmark->link_name."");
+
+				add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$bookmark->link_name,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])),$bookmark->link_image);
+			
+			
+		}
+	}catch(Exception $e){
+		whisperfollow_log("Exception occured: ".$e->getMessage());
+		//error_log("MF2 parsing Exception occured: ".$e->getMessage());
+	}
+		
+}
+
+
+
+function whisperfollow_handleRSSATOM($feedcontent,$bookmark){
+	$feed = new SimplePie();
+	$feed->set_raw_data($feedcontent);
+	$feed->init();
+	$feed->handle_content_type();
+
+	if ( $feed->error() ){
+		$errstring = $feed->error();
+		if(stristr($errstring,"XML error")){
+			whisperfollow_log('simplepie-error-malfomed: '.$errstring.'<br/><code>'.htmlspecialchars ($url).'</code>');
+		}elseif(strlen($errstring) >0){
+			whisperfollow_log('simplepie-error: '.$errstring);
+		}
+	}
+	$feed->enable_cache(false);
+	$feed->strip_htmltags(false);   
+	
+	//whisperfollow_log("<br/>Feed object:");
+	//whisperfollow_log(print_r($feed,true));
+	$items = $feed->get_items();
+
+	//whisperfollow_log(substr(print_r($items,true),0,500));
+	//whisperfollow_log("<br/>items object:");
+	usort($items,'date_sort');
+	foreach ($items as $item){
+		try{
+			whisperfollow_log("<br/>got ".$item->get_title()." from ". $item->get_feed()->get_title()."<br/>");
+			$content = html_entity_decode ($item->get_description());
+				foreach ($item->get_enclosures() as $enclosure)
+				{
+					if(strlen($enclosure->get_link()) > 0 && strlen($enclosure->get_type()) > 0){
+						if(stristr($enclosure->get_type(),"audio")){
+						$content .= "<p><audio controls><source src=\"".$enclosure->get_link()."\" type=\"".$enclosure->get_type()."\" autoplay=\"false\" preload=\"none\"></audio> - <a href=\"".$enclosure->get_link()."\">LINK</a></p>";
+						}else if(stristr($enclosure->get_type(),"video")){
+						$content .= "<p><video controls><source src=\"".$enclosure->get_link()."\" type=\"".$enclosure->get_type()."\" autoplay=\"false\" preload=\"none\"></video> - <a href=\"".$enclosure->get_link()."\">LINK</a></p>";
+						}else{
+						$content .= "<p><embed src=\"".$enclosure->get_link()."\" type=\"".$enclosure->get_type()."\" autoplay=\"false\" preload=\"none\"> - <a href=\"".$enclosure->get_link()."\">LINK</a></p>";
+						}
+					}
+				}
+			add_whisper($item->get_permalink(),$item->get_title(),$content,$bookmark->link_name,$bookmark->link_url,$item->get_date("U"),$bookmark->link_image);
+		}catch(Exception $e){
+			whisperfollow_log("Exception occured: ".$e->getMessage());
+		}
+	}
+}
 
 
 function whisperfollow_aggregator( $args = array() ) {
+	global $bookmarkLibrary;
 	whisperfollow_log("aggregation!");
 	$bookmarks = get_bookmarks( array(
 	'orderby'        => 'name',
@@ -363,162 +317,98 @@ function whisperfollow_aggregator( $args = array() ) {
 	'category_name'  => 'Blogroll'
 	));
 	$feed_uris = array();
-	foreach($bookmarks as $bookmark){
-		if(rand(0,count($bookmarks))<100){
+	while(rand(0,count($bookmarks)/10)>0){
+		$bookmark = $bookmarks[rand(0,count($bookmarks))];
+		
 			if(strlen($bookmark->link_rss)>0){
 				whisperfollow_log('<br/>checking '.$bookmark->link_name);
-				whisperfollow_aggregate( $bookmark);
+				$bookmarkLibrary[$bookmark->link_rss] = $bookmark;
+				whisperfollow_curlthings( array($bookmark->link_rss));
 			}else{
-				whisperfollow_mf2_read($bookmark);
+				whisperfollow_log('<br/>checking '.$bookmark->link_name);
+				$bookmarkLibrary[$bookmark->link_url] = $bookmark;
+				whisperfollow_curlthings( array($bookmark->link_url));
 			}
-		}
+		
 	}
 	
 
 }
 
-function followinglink(){
-	$followinglink = "/index.php?pagename=following&followpage=";
-	if ( get_option('permalink_structure') != '' ) { $followinglink = "/following/"; }
-	return $followinglink;
-}
 
-function whisperfollow_page($items){
-	global $wp_query;
-	global $wpdb;
-	$fpage=0;
-	$length = 15;
-	if (isset($wp_query->query_vars['followpage']))	{
-		echo "followpage: ";
-		$pagenum = (string)$wp_query->query_vars['followpage'];
-		echo $pagenum;
-		if(stristr($pagenum,"debuglog")){
-			whisperfollow_log("log viewed");
-			echo "<br/>".implode("<br>",array_slice(explode("|",get_option("whisperfollow_log")),0,25));
-			return;
-		}elseif(stristr($pagenum,"endpoint")){
-			$wfbody = @file_get_contents('php://input');
-			$feed = whisperfollow_fetch_feed( $wfbody );
-			whisperfollow_log("got a pubsubhubbub update from \"".$feed."\"");
-			echo "<br/>frickin PuSH endpoint!";
-			return;
-		}elseif(current_user_can('manage_options')){
-			$fpage = $wp_query->query_vars['followpage'];
-		}else{
-			echo '<p>Only <a href="'.wp_login_url( get_permalink() ).'">the owner of this page</a> can view their <a href="http://wordpress.org/extend/plugins/whisperfollow">WhisperFollow</a> feed.</p>';
-			return;
-		}
-	}elseif(!current_user_can('manage_options')){
-		echo '<p>Only <a href="'.wp_login_url( get_permalink() ).'">the owner of this page</a> can view their <a href="http://wordpress.org/extend/plugins/whisperfollow">WhisperFollow</a> feed.</p>';
-		return;
-	}
-	if(isset($_POST['follownewaddress'])&&current_user_can('manage_options')){
-		whisperfollow_newfollow($_POST['follownewaddress']);
-	}
-	if(isset($_POST['followtitle'])&&current_user_can('manage_options')){
-		createthereblog(html_entity_decode($_POST['followtitle']),html_entity_decode($_POST['followcontent']),html_entity_decode($_POST['followcontext']),html_entity_decode($_POST['followcontexttarget']),html_entity_decode($_POST['followcontexttitle']),$_POST['followlike']?:false);
-	}
-	if(isset($_POST['forcecheck'])&&current_user_can('manage_options')){
-		whisperfollow_log("check forced by user");
-		whisperfollow_aggregator();
-	}
-	$where = "";
-	if(isset($_POST['followsearch'])){
-		$where = " WHERE `authorname` like '%".$_POST['followsearch']."%' OR `content` like '%".$_POST['followsearch']."%' ";
-	}
-	$items = $wpdb->get_results(
-		'SELECT * 
-		FROM  `'.$wpdb->prefix . 'whisperfollow` '.$where.'
-		ORDER BY  `time` DESC 
-		LIMIT '.($fpage*$length).' , '.$length.';'
+
+
+add_filter( 'cron_schedules', 'whisperfollow_cron_definer' );
+
+
+function whisperfollow_cron_definer($schedules){
+
+	$schedules['fivemins'] = array(
+		'interval'=> 300,
+		'display'=>  __('Once Every 5 Minutes')
 	);
-	echo whisperfollow_ajax_display();
-	
-//	whisperfollow_display($items,'Items');
-//	echo '<div style="clear: both;">';
-//	if($fpage > 0){
-//		echo '<p style="float: left;"><a href="'.site_url().followinglink().($fpage-1).'" >Newer</a></p>';
-//	}
-//	echo '<p style="float: right;"><a href="'.site_url().followinglink().($fpage+1).'" >Older</a></p></div>';
-//	echo '<div style="clear: both;"><form target="" method="POST">New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br><input type="submit" name="forcecheck" value="forcecheck"></form></div>';
-//	echo '\n<script type="text/javascript">jQuery(document).ready(function($) {$(".followContextToggle").change(function(){$(this).siblings().next(".followContextBox").toggle($(this).prop("checked"));$(this).siblings().next(".followContextBox").attr("disabled",!$(this).prop("checked"))});});</script>';
-}
-    
-function whisperfollow_display($items,$time){
-	if ( !empty( $items ) ) { 
-		foreach ( $items as $item ) {
-			echo '<div class="followingpost" style="border:3px solid black;" ><a href="' . $item->permalink.'"><h2>'. $item->title. '</h2></a>'; 
-			echo '<div class="rss_show_box" id="'.$item->permalink.'">'. $item->content. '</div>'; 
-			echo '<br><span class="feed-source">Source: '.$item->authorname . ' | ' . $item->time. '</span>';
-			if(current_user_can('manage_options')){
-				echo "<br><button onClick=\"document.getElementById('reply-".urlencode($item->permalink)."').style.display='block'\">Reblog This</button>";
-				echo "</div>";
-				echo '<div id="reply-'.urlencode($item->permalink).'" class="replyui" style="display:none;">';
-				
-				foreach (get_posts(array('meta_key'=>'contextTarget','meta_value'=>$item->permalink)) as $existing){
-					echo '<p>Item previously reblogged: <a href="'.get_permalink($existing->ID).'">'.($existing->post_name?:$existing->ID).'</a></p>';
-				}
-				$explodedtitle = explode("<br/>\n",wordwrap(htmlspecialchars($item->authorname.": ".$item->title),75,"<br/>\n"));
-				
-				echo '<form target="" method="POST">
-				Title:<br>
-				<input type="text" name="followtitle" value="'.$explodedtitle[0].(count($explodedtitle)>1?"...":"").'"><br>
-				Citation:
-				<input type="hidden" name="followcontexttarget" value="'.urlencode($item->permalink).'"/>
-				<input type="hidden" name="followcontexttitle" value="'.htmlspecialchars($item->authorname.": ".$item->title).'"/>
-				<input type="checkbox" checked class="followContextToggle"/>
-				<br><textarea name="followcontext" class="followContextBox" style="width:100%;height:100px">'.htmlspecialchars($item->content).'</textarea><br>
-				Text:<br>
-				<textarea name="followcontent" style="width:100%;height:200px"></textarea><br>
-				<input type="checkbox" name="followlike"/> Like?<br/>
-				<input type="hidden" name="followpermalink" value="'.$item->permalink.'">
-				<input type="submit" value="go">
-				</form>';
-			}
-			echo '</div>';
-		}
 
+	return $schedules;
+}
+
+
+
+add_action( 'wp', 'whisperfollow_setup_schedule' );
+/**
+ * On an early action hook, check if the hook is scheduled - if not, schedule it.
+ */
+function whisperfollow_setup_schedule() {
+	if ( ! wp_next_scheduled( 'whisperfollow_generate_hook' ) ) {
+		wp_schedule_event( time(), 'fivemins', 'whisperfollow_generate_hook');
 	}
 }
 
-function whisperfollow_log($message,$verbose=true){
-	include_once( ABSPATH . 'wp-admin/includes/plugin.php' );
-	if($verbose && is_plugin_active('whisperfollow/WhisperFollow.php')){
-		echo "<p>".$message."</p>";
-	}
-	$o = get_option('whisperfollow_log');
-	if($o == false){
-		$log = "";
-	}else{
-		$log = "|".((string)$o);
-	}
-	$log = ((string)date('r')).": ".(string)$message.$log;
-	update_option('whisperfollow_log',substr($log,0,100000));
-	return message;
-}
 
-add_shortcode( 'whisperfollow_page', 'whisperfollow_shortcode');
-add_filter('cron_schedules','whisperfollow_cron_definer');
-
-add_filter('query_vars', 'following_queryvars' );
-    
-register_activation_hook( __FILE__, 'whisperfollow_install' );
-register_activation_hook(__FILE__,'whisperfollow_createtable');
-register_activation_hook(__FILE__,'whisperfollow_installdata');
-
-register_deactivation_hook( __FILE__, 'whisperfollow_deactivate' );
-
-//add_action('plugins_loaded', 'whisperfollow_update_db_check');
 add_action( 'whisperfollow_generate_hook', 'whisperfollow_aggregator' );
-add_action('generate_rewrite_rules', 'whisperfollow_add_rewrite_rules');
-add_action('admin_init', 'flush_rewrite_rules');
+function whisperfollow_feed_time() { return 300; }
 
-add_action('activated_plugin','save_error');
-function save_error(){
-    update_option('plugin_error',  ob_get_contents());
+
+function add_whisper($permalink,$title,$content,$authorname='',$authorurl='',$time=0,$avurl=''){
+	whisperfollow_log("adding whisper: ".$permalink.": ".$title);
+	global $wpdb;
+	if($time < 1){
+		$time = time();
+	}
+	$table_name = $wpdb->prefix . "whisperfollow";
+	if($wpdb->get_var( "SELECT COUNT(*) FROM ".$table_name." WHERE permalink LIKE \"".$permalink."\";")<1){
+		whisperfollow_log("no duplicate found");
+		$rows_affected = $wpdb->insert( $table_name,
+			array(
+				'permalink' => $permalink,
+				'title' => $title,
+				'content' => $content,
+				'authorname' => $authorname,
+				'authorurl' => $authorurl,
+				'time' => date( 'Y-m-d H:i:s', $time),
+				'authoravurl' => $avurl,
+				'viewed' =>false,
+			 ) );
+
+		if($rows_affected == false){
+		
+			whisperfollow_log("could not insert whisper into database! ".$permalink." : ".$title);
+			//die("could not insert whisper into database!");
+		}else{
+			whisperfollow_log("added ".$title." from ".$authorurl);
+		}
+	}else{
+		whisperfollow_log("duplicate detected");
+	}
+
 }
 
 
+
+function whisperfollow_page( $atts ) {
+//whisperfollow_aggregator();
+	return whisperfollow_ajax_display();
+}
+add_shortcode( 'whisperfollow_page', 'whisperfollow_page' );
 
 function whisperfollow_api_init() {
 	global $whisperfollow_api_whisper;
@@ -579,7 +469,6 @@ class WhisperFollow_API_Whisper {
 
 	// ...
 }
-
 
 class WhisperFollow_API_Follow {
 	public function register_routes( $routes ) {
@@ -642,14 +531,13 @@ class WhisperFollow_API_Follow {
 
 	// ...
 }
-
 function whisperfollow_ajax_display(){
 return <<<'EOD'
 
 <div class="whispercontrols"><label for="whispersearch">Search:</label><input type="text" name="whispersearch" id="whispersearch"><br/><label for="whisperpage">Page:</label><input type="text" name="whisperpage" id="whisperpage"><br/><form target="" method="POST">
-<!--New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br>--!>
+<!--New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br>
 <input type="submit" name="forcecheck" value="forcecheck"></form>
-<input type="button" value="new" onclick="toggleNewFollow()">
+<input type="button" value="new" onclick="toggleNewFollow()">--!>
 <div id="whispernewfollow">
 <label for="whispernewurl">url*:</label>
 <input type="text" id="whispernewurl" name="whispernewurl">
@@ -821,19 +709,22 @@ function isScrolledIntoView(elem)
 }
 
 function reblog(id){
-    window.reblogchild = window.open("../wp-admin/post-new.php","newpostwindow","height=768,width=1024");
+    window.reblogchild = window.open("../wp-admin/post-new.php","newpostwindow","height=768,width=1024,scrollbars=1");
     $(window.reblogchild).load(function() {
 
         console.log("window ready");
 
-	var whispertitle = $("#whisper"+id+" .whisperauthor").text()+": "+$("#whisper"+id+" .whispertitle").text();
+	var whispertitle = $("#whisper"+id+" .whispertitle").text();
+	whispertitle = whispertitle.substring(0, 125)+(whispertitle.length > 125?"...":"");
         $("#title",window.reblogchild.document).val(whispertitle);
-        $("#response_title",window.reblogchild.document).val(whispertitle.substring(0, 125)+(whispertitle.length > 125?"...":""));
-        $("#response_quote",window.reblogchild.document).val($("#whisper"+id+" .whispercontent").html());
-        $("#response_url",window.reblogchild.document).val($("#whisper"+id+" .whisperpermalink").attr("href"));
-        $("#kindchecklist li label:contains('Repost') input",window.reblogchild.document).prop('checked', true);
+        $('#cite_name',window.reblogchild.document).val(whispertitle);
+        $('#cite_summary',window.reblogchild.document).val($("#whisper"+id+" .whispercontent").html());
+        $('#cite_url',window.reblogchild.document).val($("#whisper"+id+" .whisperpermalink").attr("href"));
+        $('#author_name',window.reblogchild.document).val($("#whisper"+id+" .whisperauthor").text());
+        $('#author_url',window.reblogchild.document).val($("#whisper"+id+" .whisperauthor").attr("href"));
+        $('#author_photo',window.reblogchild.document).val($("#whisper"+id+" .whisperauthorav").attr("src"));
+        $("#taxonomy-kind li label:contains('Repost') input",window.reblogchild.document).prop('checked', true);
         $("#categorychecklist li label:contains('whispers') input",window.reblogchild.document).prop('checked', true);
-        $("#post-format-aside",window.reblogchild.document).prop('checked', true);
    });
 }
 </script></code>
@@ -843,7 +734,4 @@ function reblog(id){
 EOD;
 
 }
-
-
-
 ?>

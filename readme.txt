@@ -23,9 +23,11 @@ This section describes how to install the plugin and get it working.
 
 e.g.
 
-1. Upload `WhisperFollow.php` to the `/wp-content/plugins/` directory
-1. Activate the plugin through the 'Plugins' menu in WordPress
-1. Navigate To yourblog/following
+1. Extract the WhisperFollow folder into `/wp-content/plugins/` directory
+2. navigate to the WhisperFollow folder
+3. run composer install
+4. Activate the plugin through the 'Plugins' menu in WordPress
+5. Navigate To yourblog/following
 
 == Frequently Asked Questions ==
 
@@ -37,10 +39,15 @@ The page is initally private but if you open it in the page editor and make it p
 = How do I add links? =
 
 You can add things to your blogroll using the links editor in the Wordpress admin section which is recommended.
-You can also add things using the quick add box at the bottom of the page.
 
 
 == Changelog ==
+
+= 2.0.0 =
+* refactored everything back into one file
+* using composer for dependencies now!
+* polling should now be asynchrounous and non-blocking
+* pubsubhubbub support and quick follow are dead. at least for now.
 
 = 1.5.1 =
 * readded quick follow function
