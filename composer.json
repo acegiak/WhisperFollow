@@ -1,0 +1,7 @@
+{
+    "require": {
+        "symfony/event-dispatcher": "^2.8",
+        "stil/curl-easy": "^1.1",
+        "barnabywalters/mf-cleaner": "^0.1.4"
+    }
+}
