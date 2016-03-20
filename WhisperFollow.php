@@ -246,6 +246,10 @@ function whisperfollow_handleMF2($feedcontent,$bookmark){
 				}
 				whisperfollow_log("<br/>got ".$child['properties']['name'][0]." from ".$bookmark->link_name."<br/>");
 				//error_log("MF2: got ".$child['properties']['name'][0]." from ".$bookmark->link_name."");
+				
+				if($content == null){
+					whisperfollow_log("MF2 CONTENT NULL?!? HERE'S THE WHOLE CHILD:".print_r($child,true));
+				}
 
 				add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$bookmark->link_name,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])),$bookmark->link_image);
 			
