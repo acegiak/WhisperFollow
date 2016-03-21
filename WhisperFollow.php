@@ -317,8 +317,7 @@ function whisperfollow_aggregator( $args = array() ) {
 	whisperfollow_log("aggregation!");
 	$bookmarks = get_bookmarks( array(
 	'orderby'        => 'name',
-	'order'          => 'ASC',
-	'category_name'  => 'Blogroll'
+	'order'          => 'ASC'
 	));
 	$feed_uris = array();
 	for($x=0;$x<max(1,count($bookmarks)/10);$x++){
