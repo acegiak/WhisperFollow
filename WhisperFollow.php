@@ -321,7 +321,7 @@ function whisperfollow_aggregator( $args = array() ) {
 	'category_name'  => 'Blogroll'
 	));
 	$feed_uris = array();
-	while(rand(0,count($bookmarks)/10)>0){
+	for($x=0;$x<max(1,count($bookmarks)/10);$x++){
 		$bookmark = $bookmarks[rand(0,count($bookmarks))];
 		
 			if(strlen($bookmark->link_rss)>0){

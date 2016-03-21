@@ -10,12 +10,17 @@ Use your wordpress blog to aggregate and reblog all friends and sites from acros
 
 == Description ==
 
-WhisperFollow turns your wordpress blog into a federated social web client.
-In it's current form it aggregates RSS feeds in a page on your blog called "following" which it creates.
-The links it aggregates are the ones from your blogroll with rss feed data.
-Reblogs are automatically in the "whispers" category which can be excluded from pages if you like using plugins like [Simply-Exclude](http://wordpress.org/extend/plugins/simply-exclude/).
+WhisperFollow adds an indieweb compatible feed reader to your wordpress blog.
 
-This plugin will be updated to be ostatus compatible working with the [ostatus-for-wordpress](http://wordpress.org/extend/plugins/ostatus-for-wordpress/) plugin.
+It uses your blogroll links as a subscription list. If you don't have the wordpress blogroll installed on your site use the Link Manager Plugin to do so: https://wordpress.org/plugins/link-manager/
+
+If no RSS/Atom feed is provided for a link, WhisperFollow will attempt to parse the page itself looking for Microformats2 H-entry markup.
+
+Whisperfollow creates a page called "following" which when viewed by a user with appropriate permissions displays entries from your aggregated feeds.
+
+You will need composer installed on your system to install this plugin's dependencies.
+
+
 
 == Installation ==
 
