@@ -51,7 +51,7 @@ function date_sort($a,$b) {
 }
 
 function whisperfollow_log($message,$verbose=true){
-	error_log($message);
+	//error_log($message);
 	return $message;
 
 	include_once( ABSPATH . 'wp-admin/includes/plugin.php' );
@@ -326,15 +326,15 @@ function whisperfollow_aggregator( $args = array() ) {
 			if(strlen($bookmark->link_rss)>0){
 				whisperfollow_log('<br/>checking '.$bookmark->link_name);
 				$bookmarkLibrary[$bookmark->link_rss] = $bookmark;
-				whisperfollow_curlthings( array($bookmark->link_rss));
+				$feed_uris[] = $bookmark->link_rss;
 			}else{
 				whisperfollow_log('<br/>checking '.$bookmark->link_name);
 				$bookmarkLibrary[$bookmark->link_url] = $bookmark;
-				whisperfollow_curlthings( array($bookmark->link_url));
+				$feed_uris[] = $bookmark->link_url;
 			}
 		
 	}
-	
+	whisperfollow_curlthings($feed_uris);
 
 }
 
@@ -418,27 +418,36 @@ function whisperfollow_api_init() {
 
 	$whisperfollow_api_whisper = new WhisperFollow_API_Whisper();
 	$whisperfollow_api_follow = new WhisperFollow_API_Follow();
-	add_filter( 'json_endpoints', array( $whisperfollow_api_whisper, 'register_routes' ) );
-	add_filter( 'json_endpoints', array( $whisperfollow_api_follow, 'register_routes' ) );
+	//add_filter( 'json_endpoints', array( $whisperfollow_api_whisper, 'register_routes' ) );
+	//add_filter( 'json_endpoints', array( $whisperfollow_api_follow, 'register_routes' ) );
+	add_action( 'rest_api_init', array( 'WhisperFollow_API_Whisper', 'register_routes' ) );
+	error_log('api init');
 }
-add_action( 'wp_json_server_before_serve', 'whisperfollow_api_init' );
+
+//add_action( 'wp_json_server_before_serve', 'whisperfollow_api_init' );
+whisperfollow_api_init();
 
 class WhisperFollow_API_Whisper {
-	public function register_routes( $routes ) {
-		$routes['/whisperfollow/whispers'] = array(
-			array( array( $this, 'get_posts'), WP_JSON_Server::READABLE ),
-		);
-		$routes['/whisperfollow/whispers/(?P<id>\d+)'] = array(
-			array( array( $this, 'get_post'), WP_JSON_Server::READABLE ),
+	public static function register_routes() {
+		error_log("registering");
+		register_rest_route( 'whisperfollow/v1', '/whispers', array(
+			array(
+//				'methods' => WP_REST_Server::READABLE,
+				'methods' => 'GET',
+				'callback' => array( 'WhisperFollow_API_Whisper', 'get_posts' ),
+			),
+		));
 
-		);
-
-		// Add more custom routes here
-
-		return $routes;
 	}
-	public function get_posts( $filter = array(), $context = 'view', $type = 'post', $page = 1, $offset = 0, $search = "") {
+
+//	public function get_posts($filter = array(), $context = 'view', $type = 'post', $page = 1, $offset = 0, $search = "") {
+	public static function get_posts() {
 		global $wpdb; 
+
+		$page = $_GET['page']?$_GET['page']:1;
+		$search = $_GET['search']?$_GET['search']:"";
+		$offset = $_GET['offset']?$_GET['offset']:0;
+
 		$length = 10;
 		$where = "";
 		if($offset > 0){
@@ -538,7 +547,7 @@ function whisperfollow_ajax_display(){
 return <<<'EOD'
 
 <div class="whispercontrols"><label for="whispersearch">Search:</label><input type="text" name="whispersearch" id="whispersearch"><br/><label for="whisperpage">Page:</label><input type="text" name="whisperpage" id="whisperpage"><br/><form target="" method="POST">
-<!--New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br>
+New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br>
 <input type="submit" name="forcecheck" value="forcecheck"></form>
 <input type="button" value="new" onclick="toggleNewFollow()">--!>
 <div id="whispernewfollow">
@@ -643,9 +652,13 @@ function dothething(){
 	if($("#whispersearch").val().length >0){
 		window.whispersearchterm = "&search="+encodeURIComponent($("#whispersearch").val());
 	}
+	var offsetcheck = "";
+	if(window.whisperoffset.length > 0){
+		offsetcheck = "&offset="+window.whisperoffset;
+	}
         window.whisperpagecount += 1;
         console.log("button were pressed "+window.whisperpagecount.toString());
-        $.getJSON( "../wp-json/whisperfollow/whispers?page="+window.whisperpagecount.toString()+window.whisperoffset+window.whispersearchterm, function( data ) {
+        $.getJSON( "../wp-json/whisperfollow/v1/whispers?page="+window.whisperpagecount.toString()+offsetcheck+window.whispersearchterm, function( data ) {
            var tempmax = 0;
            $.each( data, function( key, val ) {
              if(window.listedwhispers.indexOf(val.permalink) < 0){
