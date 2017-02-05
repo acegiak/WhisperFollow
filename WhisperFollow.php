@@ -678,8 +678,10 @@ function dothething(){
            window.whispersloading = false;
            $("#wfdnext").val("load more");
 
-		
+
 	$("div.scriptescaper").dblclick(function(){$(this).removeClass("scriptescaped");$(this).addClass("scriptunescaped");$(this).html(function(){return $("<div/>").html($(this).html()).text();});});
+        $("video").each(function(){$(this).prop("controls",true);});
+
         });
     }
 
