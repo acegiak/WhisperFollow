@@ -409,9 +409,8 @@ function add_whisper($permalink,$title,$content,$authorname='',$authorurl='',$ti
 
 function whisperfollow_page( $atts ) {
 //whisperfollow_aggregator();
-	return whisperfollow_ajax_display();
+	echo whisperfollow_ajax_display();
 }
-add_shortcode( 'whisperfollow_page', 'whisperfollow_page' );
 
 function whisperfollow_api_init() {
 	global $whisperfollow_api_whisper;
@@ -549,7 +548,7 @@ return <<<'EOD'
 <div class="whispercontrols"><label for="whispersearch">Search:</label><input type="text" name="whispersearch" id="whispersearch"><br/><label for="whisperpage">Page:</label><input type="text" name="whisperpage" id="whisperpage"><br/><form target="" method="POST">
 New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="TEXT" name="followsearch"><input type="SUBMIT" value="go"><br>
 <input type="submit" name="forcecheck" value="forcecheck"></form>
-<input type="button" value="new" onclick="toggleNewFollow()">--!>
+<input type="button" value="new" onclick="toggleNewFollow()">
 <div id="whispernewfollow">
 <label for="whispernewurl">url*:</label>
 <input type="text" id="whispernewurl" name="whispernewurl">
@@ -569,6 +568,14 @@ New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="T
 
 <div id="wfd"></div>
 <input type="button" id="wfdnext" value="load" onclick="dothething()"><code>
+<style type="text/css">
+.whispercontent{
+	max-width:900px;
+}
+.whispercontent img{
+	max-width:100%;
+}
+</style>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
 <script>
 function toggleNewFollow(){
@@ -671,7 +678,7 @@ function dothething(){
                  window.listedwhispers[window.listedwhispers.length] = val.permalink;
              }
            });
-           blockQuoteExpander();
+           //blockQuoteExpander();
            if(window.whisperoffset == ""){
                window.whisperoffset = "&offset="+tempmax.toString();
            }
@@ -727,6 +734,7 @@ function isScrolledIntoView(elem)
 }
 
 function reblog(id){
+        $("#whisper"+id+" .whispercontent").find(".expanded").each(function(){$(this).removeClass("expanded");});
     window.reblogchild = window.open("../wp-admin/post-new.php","newpostwindow","height=768,width=1024,scrollbars=1");
     $(window.reblogchild).load(function() {
 
@@ -752,4 +760,29 @@ function reblog(id){
 EOD;
 
 }
+
+
+
+
+
+function add_whisperfollow_options_to_menu(){
+	add_menu_page(
+		'WhisperFollow',
+		'WhisperFollow',
+		'manage_options',
+		'whisperfollow', 
+		'whisperfollow_page',
+		plugin_dir_url(__FILE__) . 'ghost.png'
+	);
+}
+
+add_action('admin_menu', 'add_whisperfollow_options_to_menu');
+
+
+
+
+
+
 ?>
+
+
