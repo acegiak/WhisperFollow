@@ -520,9 +520,12 @@ function whisperfollow_api_init() {
 
 	$whisperfollow_api_whisper = new WhisperFollow_API_Whisper();
 	$whisperfollow_api_follow = new WhisperFollow_API_Follow();
+	$whisperfollow_api_post = new WhisperFollow_API_Post();
 	//add_filter( 'json_endpoints', array( $whisperfollow_api_whisper, 'register_routes' ) );
 	//add_filter( 'json_endpoints', array( $whisperfollow_api_follow, 'register_routes' ) );
 	add_action( 'rest_api_init', array( 'WhisperFollow_API_Whisper', 'register_routes' ) );
+	add_action( 'rest_api_init', array( 'WhisperFollow_API_Post', 'register_routes' ) );
+
 	error_log('api init');
 }
 
@@ -584,17 +587,70 @@ class WhisperFollow_API_Whisper {
 	// ...
 }
 
+class WhisperFollow_API_Post {
+	public function register_routes( $routes ) {
+		register_rest_route( 'whisperfollow/v1', '/post', array(
+			array(
+//				'methods' => WP_REST_Server::READABLE,
+				'methods' => WP_REST_Server::EDITABLE,
+				'callback' => array( 'WhisperFollow_API_Post', 'new_post' )
+			)
+		));
+
+	}
+	public function new_post( $request ) {
+		error_log("NEW WF POST: ".json_encode($request->get_param( 'publish' )));
+
+		$data = array(
+			"post_title"=>strlen($request->get_param( 'title' ))>0?$request->get_param( 'title' ):".",
+		);
+
+		if($request->get_param( 'reply' )){
+			$data['post_content'] = $request->get_param( 'reply' );
+		}
+
+		$postID = wp_insert_post($data,true);
+		wp_set_post_terms($postID,$request->get_param( 'type' ),"kind");
+		$idObj = get_category_by_slug('whispers');
+		wp_set_post_categories($postID,array($idObj->term_id));
+		error_log(json_encode($postID));
+
+		$post = get_post($postID);
+		$mf2post = new MF2_Post($post);
+
+		$cite = array();
+
+		$author          = array();
+		$author['name']  = $request->get_param( 'author' );
+		$author['url']   = $request->get_param( 'authorlink' );
+		$author['photo'] = $request->get_param( 'authorimage' );
+		$author          = array_filter( $author );
+		$cite['author']  = $author;
+
+		$cite['summary'] = $request->get_param( 'content' );
+		$cite['name']    = $request->get_param( 'title' );
+		$cite['url']     = $request->get_param( 'permalink' );
+
+		$mf2post->set_by_kind( $cite, $request->get_param( 'type' ) );
+
+		if($request->get_param( 'publish' )=="true"){
+			wp_publish_post($postID);
+		}
+		return $postID;
+	}
+}
+
 class WhisperFollow_API_Follow {
 	public function register_routes( $routes ) {
 		$routes['/whisperfollow/follows'] = array(
-			array( array( $this, 'new_post'), WP_JSON_Server::CREATABLE | WP_JSON_Server::ACCEPT_JSON )
+			array( array( $this, 'new_follow'), WP_JSON_Server::CREATABLE | WP_JSON_Server::ACCEPT_JSON )
 		);
 
 		// Add more custom routes here
 
 		return $routes;
 	}
-	public function new_post( $data ) {
+	public function new_follow( $data ) {
 
 	require_once('wp-admin/includes/bookmark.php');
 
@@ -779,28 +835,58 @@ function dothething(){
            var tempmax = 0;
            $.each( data, function( key, val ) {
              if(window.listedwhispers.indexOf(val.permalink) < 0){
-                 $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+safety(val.content)+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a> <a href='"+val.permalink+"' class='whispertime' target='_blank'>"+val.time+"</a></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
-		console.log("id check:"+val.id.toString());
-                 if(val.id > tempmax){
-                     tempmax = val.id;
-			console.log("set to new max");
-                 }
-                 window.listedwhispers[window.listedwhispers.length] = val.permalink;
+				$("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+safety(val.content)+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a> <a href='"+val.permalink+"' class='whispertime' target='_blank'>"+val.time+"</a></div><input type='button' class='reblogbutton socialbutton' value='🔁'><input type='button' class='likebutton socialbutton' value='❤️'><input type='button' class='replybutton socialbutton' value='↩️'><input type='button' class='commentbutton socialbutton' value='🗣️'><span class='moreedit'><textarea class='response'></textarea><input type='hidden' class='motivation'><input type='button' class='morebutton socialbutton' value='⌨️'><input type='button' class='sendbutton socialbutton' value='💌'></span></div>" );
+				console.log("id check:"+val.id.toString());
+				if(val.id > tempmax){
+					tempmax = val.id;
+					console.log("set to new max");
+				}
+				window.listedwhispers[window.listedwhispers.length] = val.permalink;
              }
-           });
-           //blockQuoteExpander();
-           if(window.whisperoffset == ""){
-               window.whisperoffset = "&offset="+tempmax.toString();
-           }
-           window.whispersloading = false;
-           $("#wfdnext").val("load more");
+			});
+			//blockQuoteExpander();
+			if(window.whisperoffset == ""){
+				window.whisperoffset = "&offset="+tempmax.toString();
+			}
+			window.whispersloading = false;
+			$("#wfdnext").val("load more");
+			$('.moreedit').hide();
+			$(".socialbutton").click(function(){
+				var id = $(this).closest('.whisper').attr('id').replace(/[^0-9]/gi,"");
+				console.log(id);
+				if($(this).hasClass("reblogbutton")){
+					reblog(id,'repost','',true);
+				}
+				if($(this).hasClass("likebutton")){
+					reblog(id,'like','',true);
+				}
+				if($(this).hasClass("replybutton")){
+					$(this).siblings('.moreedit').toggle();
+					$(this).siblings('.moreedit').find('.motivation').val('reply');
+				}
+				if($(this).hasClass("commentbutton")){
+					$(this).siblings('.moreedit').toggle();
+					$(this).siblings('.moreedit').find('.motivation').val('repost');
+				}
+				if($(this).hasClass("morebutton")){
+					reblog(id,$(this).siblings('.motivation').val(),$(this).siblings('.response').val(),false);
+					$(this).parent().toggle();
+				}
+				if($(this).hasClass("sendbutton")){
+					reblog(id,$(this).siblings('.motivation').val(),$(this).siblings('.response').val(),true);
+					$(this).parent().toggle();
+				}
+
+			});
 
 
 	$("div.scriptescaper").dblclick(function(){$(this).removeClass("scriptescaped");$(this).addClass("scriptunescaped");$(this).html(function(){return $("<div/>").html($(this).html()).text();});});
         $("video").each(function(){$(this).prop("controls",true);});
 
         });
-    }
+	}
+	
+
 
 }
 win = $(window),
@@ -843,25 +929,36 @@ function isScrolledIntoView(elem)
     return ((elemBottom <= docViewBottom) && (elemTop >= docViewTop));
 }
 
-function reblog(id){
-        $("#whisper"+id+" .whispercontent").find(".expanded").each(function(){$(this).removeClass("expanded");});
-    window.reblogchild = window.open("../wp-admin/post-new.php","newpostwindow","height=768,width=1024,scrollbars=1");
-    $(window.reblogchild).load(function() {
+function reblog(id,type,reply,publish){
+		$("#whisper"+id+" .whispercontent").find(".expanded").each(function(){$(this).removeClass("expanded");});
+		
+		var whispertitle = $("#whisper"+id+" .whispertitle").text();
+		if(whispertitle.length <= 0){
+			whispertitle = $("#whisper"+id+" .whisperpermalink").attr("href");
+		}
+		whispertitle = whispertitle.substring(0, 125)+(whispertitle.length > 125?"...":"");
+		var postData = {"title":whispertitle,
+			"content":$("#whisper"+id+" .whispercontent").html(),
+			"permalink":$("#whisper"+id+" .whisperpermalink").attr("href"),
+			"author":$("#whisper"+id+" .whisperauthor").text(),
+			"authorlink":$("#whisper"+id+" .whisperauthor").attr("href"),
+			"authorimage":$("#whisper"+id+" .whisperauthorav").attr("src"),
+			"type":type,
+			"reply":reply,
+			"publish":publish
+		}
+		console.log(postData);
+		if(publish){
+			$.post( "../wp-json/whisperfollow/v1/post", postData,function( data ) {
+				console.log(data);
+			});
+		}else{
+			$.post( "../wp-json/whisperfollow/v1/post", postData,function( data ) {
+				console.log(data);
+				window.open("../wp-admin/post.php?action=edit&post="+data,"newpostwindow","height=768,width=1024,scrollbars=1");
+			});
+		}
 
-        console.log("window ready");
-
-	var whispertitle = $("#whisper"+id+" .whispertitle").text();
-	whispertitle = whispertitle.substring(0, 125)+(whispertitle.length > 125?"...":"");
-        $("#title",window.reblogchild.document).val(whispertitle);
-        $('#cite_name',window.reblogchild.document).val(whispertitle);
-        $('#cite_summary',window.reblogchild.document).val($("#whisper"+id+" .whispercontent").html());
-        $('#cite_url',window.reblogchild.document).val($("#whisper"+id+" .whisperpermalink").attr("href"));
-        $('#author_name',window.reblogchild.document).val($("#whisper"+id+" .whisperauthor").text());
-        $('#author_url',window.reblogchild.document).val($("#whisper"+id+" .whisperauthor").attr("href"));
-        $('#author_photo',window.reblogchild.document).val($("#whisper"+id+" .whisperauthorav").attr("src"));
-        $("#taxonomy-kind li label:contains('Repost') input",window.reblogchild.document).prop('checked', true);
-        $("#categorychecklist li label:contains('whispers') input",window.reblogchild.document).prop('checked', true);
-   });
 }
 </script></code>
 
