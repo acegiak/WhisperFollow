@@ -251,7 +251,7 @@ function whisperfollow_handleMF2($feedcontent,$bookmark){
 					whisperfollow_log("MF2 CONTENT NULL?!? HERE'S THE WHOLE CHILD:".print_r($child,true));
 				}
 
-				add_whisper($child['properties']['url'][0],$child['properties']['name'][0],$content,$bookmark->link_name,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])),$bookmark->link_image);
+				add_whisper($child['properties']['url'][0],$child['properties']['name'][0],strlen($content)>0?$content:"",$bookmark->link_name,$feeditem['properties']['url'][0]?:$page,date('U',strtotime($child['properties']['published'][0])),$bookmark->link_image);
 			
 			
 		}
@@ -311,8 +311,84 @@ function whisperfollow_handleRSSATOM($feedcontent,$bookmark){
 	}
 }
 
+function whisperfollow_twitter_media($tweet){
+	$content = htmlentities ($tweet['full_text']); 
+
+	$urls = array();
+	foreach($tweet['entities']['urls'] as $url){
+		$urls[$url['url']] = $url['expanded_url'];
+	}
+
+	if(isset($tweet['retweeted_status'])){
+		$content = '<blockquote class="twitterretweet"><cite><a href="https://twitter.com/'.$tweet['retweeted_status']['user']['screen_name'].'"><img src="'.$tweet['retweeted_status']['user']['profile_image_url_https'].'">'.htmlentities ($tweet['retweeted_status']['user']['name']).'</a></cite>'.whisperfollow_twitter_media($tweet['retweeted_status']).'</blockquote>';
+		if($tweet['is_quote_status']){
+			$content .=htmlentities ($tweet['full_text']); 
+		}
+	}
+	if(isset($tweet['extended_entities']['media'])){
+		$medias = array();
+		foreach($tweet['extended_entities']['media'] as $media){
+			if($media['type']=="photo"){
+				$medias[] = '<img src="'.$media['media_url'].'">';
+			}else if($media['type']=="video"){
+				$medias[] = '<video controls><source src="'.$media['video_info']['variants'][0]['url'].'" type="'.$media['video_info']['variants'][0]['content_type'].'"></video>';
+			}else if($media['type']=="animated_gif"){
+				$medias[] = '<video autoplay loop><source src="'.$media['video_info']['variants'][0]['url'].'" type="'.$media['video_info']['variants'][0]['content_type'].'"></video>';
+			}else{
+				$medias[] = '<a href="'.$media['url'].'" class="twittermedia">media</a>';
+			}
+		}
+		$content .= '<div class="twittermedia">'.implode(" ",$medias).'</div>';
+	}
+	$content = preg_replace_callback('`https://t.co/\w+`',(function ($matches) use ($urls){
+		if(isset($urls[$matches[0]])){
+			return '<a href="'.$urls[$matches[0]].'" target="_blank">'.$urls[$matches[0]].'</a>';
+		}
+		return $matches[0];
+	}),$content);
+	$content = preg_replace('`@(\w+)`','<a href="https://twitter.com/$1" target="_blank">@$1</a>',$content);
+	$content = preg_replace('`[\r\n]`','<br>',$content);
+	return $content;
+}
+
+function whisperfollow_tweetcheck(){
+	error_log("tweetcheck");
+	$settings = array(
+		'oauth_access_token' => get_option('whisperfollow_twitter_oauth_access_token',0),
+		'oauth_access_token_secret' => get_option('whisperfollow_twitter_oauth_access_token_secret',0),
+		'consumer_key' => get_option('whisperfollow_twitter_consumer_key',0),
+		'consumer_secret' => get_option('whisperfollow_twitter_consumer_secret',0)
+	);
+	$maintainer = 'acegiak';
+
+
+	$url = "https://api.twitter.com/1.1/statuses/home_timeline.json";
+
+	$twitter = new TwitterAPIExchange($settings);
+
+	$since = get_option('whisperfollow_seentweet',0);
+
+	$getfield = '?count=200&tweet_mode=extended&include_rts=true&since_id='.$since;
+
+	$twget = $twitter->setGetfield($getfield)->buildOauth($url, "GET")->performRequest();
+	$tws = json_decode($twget,true);
+	foreach($tws as $tweet){
+		error_log(json_encode($tweet));
+		if($tweet['id'] > $since){
+			$since = $tweet['id'];
+		}
+
+		$content = whisperfollow_twitter_media($tweet);
+		add_whisper("https://twitter.com/".$tweet['user']['screen_name']."/status/".$tweet['id_str'],"",$content,htmlentities ($tweet['user']['name']),'https://twitter.com/'.$tweet['user']['screen_name'],$tweet['created_at'],$tweet['user']['profile_image_url_https']);
+	}
+	update_option('whisperfollow_seentweet',$since);
+
+}
+
 
 function whisperfollow_aggregator( $args = array() ) {
+	whisperfollow_tweetcheck();
+
 	global $bookmarkLibrary;
 	whisperfollow_log("aggregation!");
 	$bookmarks = get_bookmarks( array(
@@ -336,7 +412,9 @@ function whisperfollow_aggregator( $args = array() ) {
 	}
 	whisperfollow_curlthings($feed_uris);
 
+
 }
+
 
 
 
@@ -408,7 +486,32 @@ function add_whisper($permalink,$title,$content,$authorname='',$authorurl='',$ti
 
 
 function whisperfollow_page( $atts ) {
-//whisperfollow_aggregator();
+
+	if(isset($_POST['forcecheck'])){
+		error_log("forcecheck");
+		whisperfollow_aggregator();
+	}
+
+	if(isset($_POST['whisperfollow_twitter_oauth_access_token'])){
+		update_option('whisperfollow_twitter_oauth_access_token',$_POST['whisperfollow_twitter_oauth_access_token']);
+	}
+	if(isset($_POST['whisperfollow_twitter_oauth_access_token_secret'])){
+		update_option('whisperfollow_twitter_oauth_access_token_secret',$_POST['whisperfollow_twitter_oauth_access_token_secret']);
+	}
+	if(isset($_POST['whisperfollow_twitter_consumer_key'])){
+		update_option('whisperfollow_twitter_consumer_key',$_POST['whisperfollow_twitter_consumer_key']);
+	}
+	if(isset($_POST['whisperfollow_twitter_consumer_secret'])){
+		update_option('whisperfollow_twitter_consumer_secret',$_POST['whisperfollow_twitter_consumer_secret']);
+	}
+
+	echo '<div id="whisperfollow_twitter_auth"><form action="" method="post">';
+	echo 'oauth_access_token:<input type="text" name="whisperfollow_twitter_oauth_access_token" value="'.get_option('whisperfollow_twitter_oauth_access_token',"").'"><br>';
+	echo 'oauth_access_token_secret:<input type="text" name="whisperfollow_twitter_oauth_access_token_secret" value="'.get_option('whisperfollow_twitter_oauth_access_token_secret',"").'"><br>';
+	echo 'consumer_key:<input type="text" name="whisperfollow_twitter_consumer_key" value="'.get_option('whisperfollow_twitter_consumer_key',"").'"><br>';
+	echo 'consumer_secret:<input type="text" name="whisperfollow_twitter_consumer_secret" value="'.get_option('whisperfollow_twitter_consumer_secret',"").'"><br>';
+	echo '<button type="submit">set twitter auth</button></form></div>';
+
 	echo whisperfollow_ajax_display();
 }
 
@@ -574,6 +677,13 @@ New Follow: <input type="TEXT" name="follownewaddress"><br>Search:<input type="T
 }
 .whispercontent img{
 	max-width:100%;
+	max-height:500px;
+}
+.whispercontent br+br,.whispercontent img+br{
+	display:none;
+	}
+.whispercontent cite{
+	display:block;
 }
 </style>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
@@ -669,7 +779,7 @@ function dothething(){
            var tempmax = 0;
            $.each( data, function( key, val ) {
              if(window.listedwhispers.indexOf(val.permalink) < 0){
-                 $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+safety(val.content)+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a><span class='whispertime'>"+val.time+"</span></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
+                 $("#wfd").append("<div id='whisper"+val.id+"' class='whisper'><div class='whispertitle'><a class='whisperpermalink' href='"+val.permalink+"'>"+val.title+"</a></div><div class='whispercontent'>"+safety(val.content)+"</div><div>Source: <a class='whisperauthor' href='"+val.authorurl+"' alt='"+val.authorname+"'><img class='whisperauthorav' src='"+val.authoravurl+"'> "+val.authorname+"</a> <a href='"+val.permalink+"' class='whispertime' target='_blank'>"+val.time+"</a></div><input type='button' onclick='reblog("+val.id+")' value='reblog'></div>" );
 		console.log("id check:"+val.id.toString());
                  if(val.id > tempmax){
                      tempmax = val.id;
